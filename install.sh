@@ -112,7 +112,23 @@ else
     GITHUB_ASSET_BASE="$GITHUB_RELEASE_BASE"
 fi
 
-# Step 1: Try downloading (mirror first, github fallback)
+# Local source override (CI smoke): install this exact binary and skip
+# mirror/github resolution entirely — keeps the smoke step offline-capable
+# while still exercising PATH registration and the atomic-replace install path.
+if [ -n "$OFFICECLI_LOCAL_BINARY" ]; then
+    if [ ! -f "$OFFICECLI_LOCAL_BINARY" ]; then
+        echo "OFFICECLI_LOCAL_BINARY set but not found: $OFFICECLI_LOCAL_BINARY"
+        exit 1
+    fi
+    cp "$OFFICECLI_LOCAL_BINARY" "/tmp/$BINARY_NAME"
+    chmod +x "/tmp/$BINARY_NAME"
+    SOURCE="/tmp/$BINARY_NAME"
+    echo "Using local binary (OFFICECLI_LOCAL_BINARY)."
+fi
+
+# Step 1: Try downloading (mirror first, github fallback); skipped entirely
+# when the local-source override above already provided SOURCE.
+if [ -z "$SOURCE" ]; then
 echo "Downloading OfficeCLI ($ASSET)..."
 if fetch_with_fallback \
         "$MIRROR_ASSET_BASE/$ASSET" \
@@ -154,6 +170,7 @@ if fetch_with_fallback \
     SOURCE="/tmp/$BINARY_NAME"
 else
     echo "Download failed."
+fi
 fi
 
 # Step 2: Fallback to local files

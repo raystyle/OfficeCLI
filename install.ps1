@@ -80,6 +80,26 @@ if ($version) {
 
 # Step 1: Try downloading (mirror first, github fallback)
 $tempFile = "$env:TEMP\$binary"
+if ($env:OFFICECLI_LOCAL_BINARY) {
+    # Local source override (CI smoke): install this exact binary and skip
+    # mirror/github resolution entirely (offline-capable smoke).
+    if (-not (Test-Path $env:OFFICECLI_LOCAL_BINARY)) {
+        Write-Host "OFFICECLI_LOCAL_BINARY set but not found: $env:OFFICECLI_LOCAL_BINARY"
+        exit 1
+    }
+    Copy-Item $env:OFFICECLI_LOCAL_BINARY $tempFile -Force
+    $output = & $tempFile --version 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        $source = $tempFile
+        Write-Host "Using local binary (OFFICECLI_LOCAL_BINARY)."
+    } else {
+        Write-Host "OFFICECLI_LOCAL_BINARY is not a valid OfficeCLI binary."
+        exit 1
+    }
+}
+# Download is skipped entirely when the local-source override above already
+# provided $source.
+if (-not $source) {
 Write-Host "Downloading OfficeCLI..."
 if (Fetch-WithFallback "$mirrorAssetBase/$asset" "$githubAssetBase/$asset" $tempFile) {
     # Verify checksum if available
@@ -121,6 +141,7 @@ if (Fetch-WithFallback "$mirrorAssetBase/$asset" "$githubAssetBase/$asset" $temp
     }
 } else {
     Write-Host "Download failed."
+}
 }
 
 # Step 2: Fallback to local files

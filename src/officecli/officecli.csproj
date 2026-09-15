@@ -6,10 +6,6 @@
     <RootNamespace>OfficeCli</RootNamespace>
     <AssemblyName>officecli</AssemblyName>
     <Version>1.0.151</Version>
-    <!-- Lineage marker: this build is from the raystyle fork (self-maintained
-         distribution), not upstream iOfficeAI. Numeric Version continues the
-         upstream series so IsNewer/probe stay monotonic; the informational
-         suffix disambiguates provenance when both distributions coexist. -->
     <InformationalVersion>1.0.151+raystyle-fork</InformationalVersion>
     <!-- Lineage marker: this build is from the raystyle fork (self-maintained
          distribution), not upstream iOfficeAI. Numeric Version continues the
