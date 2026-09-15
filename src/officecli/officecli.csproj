@@ -10,6 +10,11 @@
          distribution), not upstream iOfficeAI. Numeric Version continues the
          upstream series so IsNewer/probe stay monotonic; the informational
          suffix disambiguates provenance when both distributions coexist. -->
+    <InformationalVersion>1.0.151+raystyle-fork</InformationalVersion>
+    <!-- Lineage marker: this build is from the raystyle fork (self-maintained
+         distribution), not upstream iOfficeAI. Numeric Version continues the
+         upstream series so IsNewer/probe stay monotonic; the informational
+         suffix disambiguates provenance when both distributions coexist. -->
     <Authors>goworm</Authors>
     <Company>OfficeCLI</Company>
     <Copyright>Copyright © 2026 OfficeCLI (https://OfficeCLI.AI)</Copyright>
