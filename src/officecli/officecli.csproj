@@ -6,6 +6,10 @@
     <RootNamespace>OfficeCli</RootNamespace>
     <AssemblyName>officecli</AssemblyName>
     <Version>1.0.151</Version>
+    <!-- Lineage marker: this build is from the raystyle fork (self-maintained
+         distribution), not upstream iOfficeAI. Numeric Version continues the
+         upstream series so IsNewer/probe stay monotonic; the informational
+         suffix disambiguates provenance when both distributions coexist. -->
     <Authors>goworm</Authors>
     <Company>OfficeCLI</Company>
     <Copyright>Copyright © 2026 OfficeCLI (https://OfficeCLI.AI)</Copyright>
@@ -21,11 +25,6 @@
   <ItemGroup>
     <PackageReference Include="DocumentFormat.OpenXml" Version="3.4.1" />
     <PackageReference Include="System.CommandLine" Version="3.0.0-preview.2.26159.112" />
-    <!-- Upstream v1.0.150 win-x64 shipped broken: System.IO.Pipelines (a transitive
-         dep of System.CommandLine preview) was dropped from the trimmed single-file
-         bundle and the first JsonSerializer path in CheckInBackground threw
-         FileNotFoundException. Explicit reference keeps it root of the trim closure. -->
-    <PackageReference Include="System.IO.Pipelines" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>
