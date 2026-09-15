@@ -1,12 +1,14 @@
 #!/bin/bash
 set -e
 
-REPO="iOfficeAI/OfficeCLI"
+REPO="raystyle/OfficeCLI"
 BINARY_NAME="officecli"
 
-# Mirror primary, github fallback. The mirror is exercised first so issues
-# surface there fast; github is the final safety net.
-MIRROR_BASE="https://d.officecli.ai"
+# Fork distribution: primary is the env.ohmygh.com mirror segment (seeded by
+# ohmycloud, same contract as the in-app updater; until seeded it 404s and the
+# script falls through), fallback is the fork's own GitHub releases. Upstream
+# iOfficeAI is no longer consulted for installs.
+MIRROR_BASE="https://env.ohmygh.com/officecli"
 GITHUB_RELEASE_BASE="https://github.com/$REPO/releases/latest/download"
 GITHUB_RAW_BASE="https://raw.githubusercontent.com/$REPO/main"
 
