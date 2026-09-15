@@ -137,6 +137,25 @@ jobs:
           publish/${{ matrix.name }} close test_smoke.docx
           rm -f test_smoke.docx
 
+      - name: Smoke test - synchronous update check
+        # Exercises the full CheckInBackground path (HttpClient + JsonSerializer +
+        # config save) in-process. This is the path that shipped broken upstream at
+        # v1.0.150 win-x64 (System.IO.Pipelines FileNotFoundException on first run):
+        # the daily check runs on a background thread, so short-lived smoke commands
+        # exit before it fires — run the check entrypoint synchronously instead so
+        # a missing assembly fails the build, not the fleet.
+        if: >-
+          (matrix.rid == 'osx-arm64' && runner.arch == 'ARM64') ||
+          (matrix.rid == 'osx-x64' && runner.arch == 'X64') ||
+          (matrix.rid == 'linux-x64' && runner.os == 'Linux') ||
+          (matrix.rid == 'win-x64' && runner.os == 'Windows')
+        env:
+          MSYS_NO_PATHCONV: '1'
+          MSYS2_ARG_CONV_EXCL: '*'
+        run: |
+          chmod +x publish/${{ matrix.name }}
+          publish/${{ matrix.name }} __update-check__
+
       - name: Smoke test - .NET 8-only runtime (linux-x64)
         if: matrix.rid == 'linux-x64' && runner.os == 'Linux'
         run: |
