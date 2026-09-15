@@ -44,6 +44,11 @@ jobs:
       run:
         shell: bash
 
+    env:
+      # Gate for the macOS signing steps: step-level `if` reads this env instead
+      # of the secrets context (Apple cert secrets are fork-absent).
+      HAS_CERT: ${{ secrets.BUILD_CERTIFICATE_BASE64 != '' }}
+
     steps:
       - uses: actions/checkout@v5
 
@@ -73,7 +78,11 @@ jobs:
           fi
 
       - name: Setup macOS code signing
-        if: startsWith(matrix.rid, 'osx-')
+        # Fork: skipped when no signing certificate is configured (the upstream
+        # Apple developer secrets do not carry over to the fork). A bare CLI
+        # binary publishes unsigned; codesigning/notarization activate
+        # automatically once the secrets exist.
+        if: startsWith(matrix.rid, 'osx-') && env.HAS_CERT == 'true'
         env:
           BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
           P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
@@ -93,7 +102,7 @@ jobs:
           rm -f "$CERT_PATH"
 
       - name: Codesign (macOS)
-        if: startsWith(matrix.rid, 'osx-')
+        if: startsWith(matrix.rid, 'osx-') && env.HAS_CERT == 'true'
         run: |
           IDENTITY=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -n 1 | sed -E 's/.*"(.+)"/\1/')
           echo "Signing with: $IDENTITY"
@@ -109,7 +118,7 @@ jobs:
           codesign -d --entitlements - --xml publish/${{ matrix.name }} | grep -q allow-jit
 
       - name: Notarize (macOS)
-        if: startsWith(matrix.rid, 'osx-')
+        if: startsWith(matrix.rid, 'osx-') && env.HAS_CERT == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APP_SPECIFIC_PASSWORD: ${{ secrets.APP_SPECIFIC_PASSWORD }}
