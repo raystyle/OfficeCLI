@@ -35,8 +35,12 @@ internal static class UpdateChecker
     // daily check so issues surface fast, and CF edge caching makes it the
     // fastest path for most users; github is the safety net when CF or the
     // mirror is unreachable.
-    private const string PrimaryBase = "https://d.officecli.ai";
-    private const string FallbackBase = "https://github.com/iOfficeAI/OfficeCLI";
+    // Fork distribution (raystyle/OfficeCLI): primary is the env.ohmygh.com mirror
+    // (seeded by ohmycloud once fork releases exist; until then it 404s/redirects and
+    // the reader falls through to GitHub), fallback is the fork's own releases.
+    // Upstream iOfficeAI is no longer consulted: self-update is fork-maintained.
+    private const string PrimaryBase = "https://env.ohmygh.com/officecli";
+    private const string FallbackBase = "https://github.com/raystyle/OfficeCLI";
     private const int CheckIntervalHours = 24;
 
     /// <summary>
