@@ -152,12 +152,13 @@ jobs:
         # fails non-zero on a truncated or assembly-incomplete build. The upstream
         # v1.0.150 fleet incident (Pipelines FileNotFoundException from the first
         # JsonSerializer call on a truncated bundle) would have been caught here.
-        # linux-musl-x64 is a static binary and runs fine on the ubuntu runner.
+        # (linux-musl-x64 is NOT static — it needs /lib/ld-musl-x86_64.so.1 which
+        # ubuntu lacks — so cross-published RIDs are covered by the trim-closure
+        # assertion below instead of a live run.)
         if: >-
           (matrix.rid == 'osx-arm64' && runner.arch == 'ARM64') ||
           (matrix.rid == 'osx-x64' && runner.arch == 'X64') ||
           (matrix.rid == 'linux-x64' && runner.os == 'Linux') ||
-          (matrix.rid == 'linux-musl-x64' && runner.os == 'Linux') ||
           (matrix.rid == 'win-x64' && runner.os == 'Windows')
         env:
           MSYS_NO_PATHCONV: '1'
@@ -204,10 +205,12 @@ jobs:
 
       - name: Smoke test - install.sh / install.ps1
         # Exercises the shell installers themselves (separate from the CLI's
-        # own `install` subcommand tested above). Downloads from
-        # d.officecli.ai with github fallback — validates the production
-        # mirror is reachable AND the in-repo script is syntactically and
-        # logically correct on each platform.
+        # own `install` subcommand tested above), offline via
+        # OFFICECLI_LOCAL_BINARY pointing at the freshly built asset — this
+        # still covers PATH registration, atomic replace and idempotence.
+        # The network legs (env.ohmygh.com mirror -> fork GitHub) are exercised
+        # only after the first release is published (draft releases are not
+        # visible to /releases/latest).
         if: >-
           (matrix.rid == 'osx-arm64' && runner.arch == 'ARM64') ||
           (matrix.rid == 'osx-x64' && runner.arch == 'X64') ||
@@ -219,10 +222,12 @@ jobs:
           MSYS2_ARG_CONV_EXCL: '*'
         run: |
           if [ "$RUNNER_OS" == "Windows" ]; then
+            export OFFICECLI_LOCAL_BINARY="publish/${{ matrix.name }}"
             pwsh -NoProfile -ExecutionPolicy Bypass -File ./install.ps1
             test -f "$LOCALAPPDATA/OfficeCLI/officecli.exe" || { echo "FAIL: officecli.exe not installed"; exit 1; }
             "$LOCALAPPDATA/OfficeCLI/officecli.exe" --version
           else
+            export OFFICECLI_LOCAL_BINARY="publish/${{ matrix.name }}"
             bash install.sh
             test -f "$HOME/.local/bin/officecli" || { echo "FAIL: officecli not installed at ~/.local/bin"; exit 1; }
             "$HOME/.local/bin/officecli" --version
