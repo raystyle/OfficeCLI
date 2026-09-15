@@ -55,6 +55,15 @@ jobs:
       - name: Publish
         run: dotnet publish src/officecli/officecli.csproj -c Release -r ${{ matrix.rid }} -o publish --nologo
 
+      - name: Assert trim closure keeps required assemblies
+        # RID-agnostic static guard (covers the 4 cross-published RIDs the host
+        # cannot execute): a trimmed non-single-file publish of the same project
+        # must physically contain System.IO.Pipelines.dll (runtime-pack includes it
+        # today; an SDK/trimmer regression dropping it fails here first).
+        run: |
+          dotnet publish src/officecli/officecli.csproj -c Release -r ${{ matrix.rid }} -o trimcheck -p:PublishSingleFile=false --nologo
+          test -f trimcheck/System.IO.Pipelines.dll || { echo "FAIL: System.IO.Pipelines.dll missing from ${{ matrix.rid }} trim closure"; exit 1; }
+
       - name: Rename output
         run: |
           if [ -f publish/officecli.exe ]; then
@@ -137,24 +146,26 @@ jobs:
           publish/${{ matrix.name }} close test_smoke.docx
           rm -f test_smoke.docx
 
-      - name: Smoke test - synchronous update check
-        # Exercises the full CheckInBackground path (HttpClient + JsonSerializer +
-        # config save) in-process. This is the path that shipped broken upstream at
-        # v1.0.150 win-x64 (System.IO.Pipelines FileNotFoundException on first run):
-        # the daily check runs on a background thread, so short-lived smoke commands
-        # exit before it fires — run the check entrypoint synchronously instead so
-        # a missing assembly fails the build, not the fleet.
+      - name: Smoke test - selftest (loud assembly completeness)
+        # Unlike __update-check__ (which swallows ALL updater errors and returns 0
+        # unconditionally), __selftest__ exercises LoadConfig->SaveConfig->re-read and
+        # fails non-zero on a truncated or assembly-incomplete build. The upstream
+        # v1.0.150 fleet incident (Pipelines FileNotFoundException from the first
+        # JsonSerializer call on a truncated bundle) would have been caught here.
+        # linux-musl-x64 is a static binary and runs fine on the ubuntu runner.
         if: >-
           (matrix.rid == 'osx-arm64' && runner.arch == 'ARM64') ||
           (matrix.rid == 'osx-x64' && runner.arch == 'X64') ||
           (matrix.rid == 'linux-x64' && runner.os == 'Linux') ||
+          (matrix.rid == 'linux-musl-x64' && runner.os == 'Linux') ||
           (matrix.rid == 'win-x64' && runner.os == 'Windows')
         env:
           MSYS_NO_PATHCONV: '1'
           MSYS2_ARG_CONV_EXCL: '*'
         run: |
           chmod +x publish/${{ matrix.name }}
-          publish/${{ matrix.name }} __update-check__
+          publish/${{ matrix.name }} __selftest__
+          publish/${{ matrix.name }} --version
 
       - name: Smoke test - .NET 8-only runtime (linux-x64)
         if: matrix.rid == 'linux-x64' && runner.os == 'Linux'

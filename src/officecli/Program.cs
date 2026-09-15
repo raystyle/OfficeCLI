@@ -79,6 +79,15 @@ if (args.Length == 1 && args[0] == "__update-check__")
     return 0;
 }
 
+// Internal smoke command (CI): config JSON round-trip; unlike __update-check__
+// this FAILS LOUD on a truncated or assembly-incomplete build (exit != 0).
+if (args.Length == 1 && args[0] == "__selftest__")
+{
+    OfficeCli.Core.UpdateChecker.SelfTest();
+    Console.WriteLine("selftest ok");
+    return 0;
+}
+
 // Schema fingerprint: officecli --output-schema-crc → CRC32 of the embedded
 // schemas/help tree. Downstream automation pins this to detect property-
 // surface drift across binary upgrades (same crc → schemas identical,

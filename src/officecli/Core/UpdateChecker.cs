@@ -28,7 +28,6 @@ internal static class UpdateChecker
     internal static string ConfigDir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".officecli");
     private static string ConfigPath => Path.Combine(ConfigDir, "config.json");
-    private const string GitHubRepo = "iOfficeAI/OfficeCLI";
     // PrimaryBase is the project-controlled mirror (Cloudflare-fronted nginx on
     // a VPS that periodically syncs github releases). FallbackBase is the
     // upstream of last resort. Order matters: the mirror is exercised on every
@@ -529,6 +528,21 @@ internal static class UpdateChecker
             if (lp[i] < cp[i]) return false;
         }
         return lp.Length > cp.Length;
+    }
+
+    /// <summary>
+    /// CI smoke seam: exercises the config JSON round-trip (LoadConfig → SaveConfig →
+    /// re-read) that the daily update check depends on. The upstream v1.0.150 fleet
+    /// incident (truncated bundle: PE header intact, first assembly load threw
+    /// FileNotFoundException from JsonSerializer) exits non-zero here instead of
+    /// shipping — unlike <c>__update-check__</c>, which intentionally swallows all
+    /// updater errors and cannot fail.
+    /// </summary>
+    internal static void SelfTest()
+    {
+        var config = LoadConfig();
+        if (!SaveConfig(config)) throw new InvalidOperationException("SaveConfig failed");
+        _ = LoadConfig(); // re-read must parse back without throwing
     }
 
     internal static AppConfig LoadConfig()
