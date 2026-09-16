@@ -176,6 +176,15 @@ jobs:
           chmod +x publish/${{ matrix.name }}
           publish/${{ matrix.name }} __selftest__
           publish/${{ matrix.name }} --version
+          # Release gate: the schema fingerprint must be identical on every RID.
+          # Downstream automation pins this CRC to upgrade blind; a divergent
+          # RID (v1.0.151 win-x64 shipped b78ff09f vs 7a7d408f elsewhere —
+          # CRLF resources from the windows runner checkout) breaks that
+          # contract. If this fails after an INTENTIONAL schemas/help change,
+          # update the pin here and note it in the release notes.
+          CRC="$(publish/${{ matrix.name }} --output-schema-crc)"
+          echo "schema crc: $CRC"
+          [ "$CRC" = "7a7d408f" ] || { echo "FAIL: schema crc $CRC != 7a7d408f (RID ${{ matrix.rid }} diverges — check .gitattributes/checkout eol)"; exit 1; }
 
       - name: Smoke test - .NET 8-only runtime (linux-x64)
         if: matrix.rid == 'linux-x64' && runner.os == 'Linux'
