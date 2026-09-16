@@ -1,0 +1,27 @@
+# Fork release determinism: force LF in every text checkout so builds on ANY
+# host produce byte-identical embedded resources. GitHub Actions windows-latest
+# checks out with core.autocrlf=true by default — without this file the win-x64
+# publish embeds CRLF variants of schemas/help/** and its --output-schema-crc
+# diverges from the other RIDs (official v1.0.151 win-x64: b78ff09f vs
+# 7a7d408f everywhere else), breaking the CRC-pinning contract for downstream
+# automation that upgrades blind per-RID. Verified five-endpoint 2026-09-16:
+# with LF checkouts all RIDs (incl. cross-published win-x64 from Linux) agree.
+* text=auto eol=lf
+
+# Binary assets — never normalize (also protects auto-detection edge cases).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.docx binary
+*.xlsx binary
+*.pptx binary
+*.glb binary
+*.exe binary
+*.pdb binary
+*.dll binary
+*.zip binary
+*.gz binary
