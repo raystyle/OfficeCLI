@@ -1,0 +1,85 @@
+name: r2-seed
+
+# 独立播种件(批一,总台核准 2026-09-17):Release published 事件触发,从 Release
+# 拉资产 rclone 推镜像段;dispatch 带 tag 入参补推,不依赖重跑任何链。
+# 编译与发布不在此面(build.yml 管);本面只播种。契约 = project-evo
+# build-release common-contract 第三节(段制:版本段 immutable copy-only
+# 长缓存 + stable 滚动段 sync delete-excluded 短缓存)+ 第五节护栏
+# (双段零上传红灯)。裸二进制形(dotnet 型变体,总台在册):播种白名单
+# = 显式三键资产 + 生成边车,非扩展名通配。
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '补推的 v* tag(从 Release 拉资产重灌)'
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  seed:
+    # 正式版发布即播;prerelease 不播(除非 dispatch 显式带 tag 补推)
+    if: ${{ !github.event.release.prerelease || inputs.tag != '' }}
+    runs-on: ubuntu-latest
+    env:
+      # env-remote 形(命名 remote r2:):四键走 Secrets;NO_CHECK_BUCKET 必带
+      # (受限 token 无建桶权,预检 CreateBucket 会 403)
+      RCLONE_CONFIG_R2_TYPE: s3
+      RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+      RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      RCLONE_CONFIG_R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+      RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+    steps:
+      - name: 取资产
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          if [ -z "$TAG" ]; then echo "::error::no tag (release event or dispatch input required)"; exit 1; fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "VER=${TAG#v}" >> "$GITHUB_ENV"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" -D dist --clobber
+          ls -l dist
+      - name: 边车生成(原生 sha256sum 格式)
+        run: |
+          set -euo pipefail
+          cd dist
+          for f in officecli-win-x64.exe officecli-linux-x64 officecli-mac-arm64; do
+            test -f "$f" || { echo "::error::asset $f missing from release"; exit 1; }
+            sha256sum "$f" > "$f.sha256"
+          done
+      - run: command -v rclone >/dev/null || (curl -fsSL https://rclone.org/install.sh | sudo bash)
+      - name: 灌段(版本段 immutable 长缓存 + stable 滚动短缓存)
+        run: |
+          set -euo pipefail
+          # 版本段:copy-only 不 sync,immutable 头一次成型,长缓存
+          rclone copy dist/ "r2:${R2_BUCKET}/officecli/${VER}/" \
+            --ignore-existing \
+            --include "officecli-*" \
+            --header-upload "Cache-Control: public, max-age=31536000, immutable" \
+            --header-upload "x-amz-object-immutable: true" \
+            --transfers 6 -v --stats-one-line
+          # stable 滚动段:sync 滚代清旧,短缓存,不 immutable
+          rclone sync dist/ "r2:${R2_BUCKET}/officecli/stable/" \
+            --include "officecli-*" \
+            --delete-excluded \
+            --header-upload "Cache-Control: max-age=60" \
+            --transfers 6 -v --stats-one-line
+      - name: 零上传红灯(双段分别清点,任一零即红)
+        run: |
+          set -euo pipefail
+          nv=$(rclone lsf "r2:${R2_BUCKET}/officecli/${VER}/" | wc -l)
+          ns=$(rclone lsf "r2:${R2_BUCKET}/officecli/stable/" | wc -l)
+          [ "$nv" -gt 0 ] || { echo "::error::镜像版本段零对象"; exit 1; }
+          [ "$ns" -gt 0 ] || { echo "::error::stable 段零对象(漏滚)"; exit 1; }
+          echo "mirror objects: ver=$nv stable=$ns"
+      - name: 对账回显
+        run: |
+          rclone lsl "r2:${R2_BUCKET}/officecli/${VER}/"
+          rclone lsl "r2:${R2_BUCKET}/officecli/stable/"
