@@ -1,6 +1,10 @@
 # OfficeCLI
 
-面向 AI agent 的 Office 文档命令行:`.docx` / `.xlsx` / `.pptx` 的读写、校验与渲染。单文件自包含二进制,无需安装 Office;内置 HTML/PNG 渲染引擎,让 agent 能「渲染→查看→修复」闭环。
+[![Build](https://github.com/raystyle/OfficeCLI/actions/workflows/build.yml/badge.svg)](https://github.com/raystyle/OfficeCLI/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/raystyle/OfficeCLI)](https://github.com/raystyle/OfficeCLI/releases/latest)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
+面向 AI agent 的 Office 文档命令行:`.docx` / `.xlsx` / `.pptx` 的读写、校验与渲染。单文件自包含二进制,无需安装 Office;内置 HTML/PNG 渲染引擎,让 agent 能「渲染、查看、修复」闭环。
 
 ## 项目介绍
 
@@ -24,6 +28,7 @@ curl -fsSL https://raw.githubusercontent.com/raystyle/OfficeCLI/main/install.sh 
 ```
 
 - **平台矩阵**:linux-x64/arm64、linux-musl(alpine)x64/arm64、osx-x64/arm64、win-x64/arm64,全部单文件自包含。
+- **校验**:直下资产可验 `sha256sum officecli-linux-x64`,期望值见 release 附带 `SHA256SUMS`(镜像同目录带 `.sha256` 边车)。
 - **五端注意**:Windows 原生跑 shell 脚本用 Git Bash;WSL 与宿主同机时注意 CPU 争用;alpine 变体非静态,需 musl 动态链接器。
 - **自升级**:内置更新器指向 fork 分发(镜像优先,GitHub release 回落);`officecli install` 一步装二进制 + skills + MCP。
 

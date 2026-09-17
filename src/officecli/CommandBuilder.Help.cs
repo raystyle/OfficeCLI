@@ -98,6 +98,14 @@ static partial class CommandBuilder
                 "Unified fleet issue tracker: https://issues.ohmygh.com (REQ-057).",
                 "Agents: hit a defect mid-session — file it one-key, no context gathering needed.",
             },
+            ["config"] = new[]
+            {
+                "Usage:",
+                "  officecli config <key> [value]   Read (no value) or write (with value) a config key",
+                "  officecli config log clear       Clear the command log",
+                "",
+                "Keys: autoUpdate, log",
+            },
         };
 
     /// <summary>
@@ -283,12 +291,12 @@ static partial class CommandBuilder
         {
             if (rootCommand != null)
             {
-                // rootCommand.Parse(["--help"]) routes to SCL's HelpOption,
-                // which writes Description/Usage/Options/Commands directly to
-                // Console. Note Program.cs's `--help` → `help` rewrite only
-                // runs once at process startup on the original args, so this
-                // programmatic Parse goes straight to SCL and does not loop.
-                rootCommand.Parse(new[] { "--help" }).Invoke();
+                // Render the root face from the live tree (cli-docs 帮助面节序,
+                // REQ-060 follow-up): header name@version / Usage / Commands /
+                // Global Options / Examples / Environment Variables. The SCL
+                // built-in renderer is sealed in 3.0-preview, and this path is
+                // the single rendering point for every --help route.
+                HelpFace.RenderRoot(rootCommand, Console.Out);
                 Console.WriteLine();
             }
 
@@ -338,7 +346,10 @@ static partial class CommandBuilder
                          && !c.Hidden
                          && c.Name != "help");
                 if (match != null)
-                    return rootCommand.Parse(new[] { match.Name, "--help" }).Invoke();
+                {
+                    HelpFace.RenderCommand(match, rootCommand, Console.Out);
+                    return 0;
+                }
             }
         }
 
@@ -360,7 +371,8 @@ static partial class CommandBuilder
         {
             Console.WriteLine($"'{cmd.Name}' is a command, not a {SchemaHelpLoader.NormalizeFormat(format)} element — showing command help. Element reference: officecli help {SchemaHelpLoader.NormalizeFormat(format)} <element>");
             Console.WriteLine();
-            return rootCommand.Parse(new[] { cmd.Name, "--help" }).Invoke();
+            HelpFace.RenderCommand(cmd, rootCommand, Console.Out);
+            return 0;
         }
 
         // Validate verb if supplied.

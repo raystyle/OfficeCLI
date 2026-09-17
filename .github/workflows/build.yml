@@ -186,6 +186,33 @@ jobs:
           echo "schema crc: $CRC"
           [ "$CRC" = "7a7d408f" ] || { echo "FAIL: schema crc $CRC != 7a7d408f (RID ${{ matrix.rid }} diverges — check .gitattributes/checkout eol)"; exit 1; }
 
+      - name: Smoke test - agent faces (--llms / help header / exit codes)
+        # cli-docs 乙面 drift guard: the --llms manual must render from the live
+        # tree within the hard 120-line budget (the binary itself exits 1 over
+        # budget), the machine form must parse, the default help face must
+        # carry the name@version header line, and usage errors must exit 2
+        # (0 success / 1 business miss / 2 usage+system contract).
+        if: >-
+          (matrix.rid == 'osx-arm64' && runner.arch == 'ARM64') ||
+          (matrix.rid == 'osx-x64' && runner.arch == 'X64') ||
+          (matrix.rid == 'linux-x64' && runner.os == 'Linux') ||
+          (matrix.rid == 'win-x64' && runner.os == 'Windows')
+        env:
+          MSYS_NO_PATHCONV: '1'
+          MSYS2_ARG_CONV_EXCL: '*'
+        run: |
+          chmod +x publish/${{ matrix.name }}
+          publish/${{ matrix.name }} --llms > llms.md
+          LINES=$(wc -l < llms.md)
+          [ "$LINES" -le 120 ] || { echo "FAIL: --llms manual is $LINES lines (budget 120)"; exit 1; }
+          publish/${{ matrix.name }} --llms --json > /dev/null
+          publish/${{ matrix.name }} --help | head -n1 | grep -q '^officecli@' || { echo "FAIL: help face header line missing officecli@version"; exit 1; }
+          set +e
+          publish/${{ matrix.name }} __no_such_command__ > /dev/null 2>&1
+          RC=$?
+          set -e
+          [ "$RC" -eq 2 ] || { echo "FAIL: usage error exits $RC, expected 2"; exit 1; }
+
       - name: Smoke test - .NET 8-only runtime (linux-x64)
         if: matrix.rid == 'linux-x64' && runner.os == 'Linux'
         run: |

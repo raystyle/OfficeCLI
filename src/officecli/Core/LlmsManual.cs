@@ -28,19 +28,14 @@ internal static class LlmsManual
         // Live subcommand list: internal (__...) commands stay hidden.
         var commands = root.Subcommands
             .Where(c => !c.Name.StartsWith("__", StringComparison.Ordinal))
-            .Select(c => (Name: c.Name, Desc: FirstSentence(c.Description),
+            .Select(c => (Name: c.Name, Desc: OfficeCli.Help.HelpFace.Blurb(c.Description),
                           Flags: c.Options.Select(o => o.Name).Where(n => n is not null).ToList()))
             .OrderBy(c => c.Name, StringComparer.Ordinal)
             .ToList();
 
-        // Common flags = shared by >= 4 subcommands (live-derived, not curated).
-        var commonFlags = commands
-            .SelectMany(c => c.Flags.Distinct())
-            .GroupBy(f => f, StringComparer.Ordinal)
-            .Where(g => g.Count() >= 4)
-            .Select(g => g.Key!)
-            .OrderBy(f => f, StringComparer.Ordinal)
-            .ToList();
+        // Common flags = shared by >= 4 subcommands (live-derived, not curated);
+        // same derivation drives the help face's Global Options split.
+        var commonFlags = OfficeCli.Help.HelpFace.DeriveCommonFlags(root);
 
         if (json)
         {
@@ -83,8 +78,11 @@ internal static class LlmsManual
             "AI-friendly CLI for Office documents (.docx/.xlsx/.pptx): single self-contained binary,",
             "no Office install; renders documents to HTML/PNG so agents can look at what they edit.",
             "",
-            "Generated from the live command tree — the agent-facing source of truth (`officecli --llms --json`",
-            "for the machine form; `officecli help` for schema-driven detail per format/element).",
+            "## Read order",
+            "",
+            "Commands below — every verb takes the file path first (`officecli <verb> <file> ...`).",
+            "Machine form of this manual: `officecli --llms --json`. Per-format element reference:",
+            "`officecli help <format> [<verb>] [<element>]`. Exit codes at the bottom.",
             "",
             "## Subcommands",
             "",
@@ -99,17 +97,24 @@ internal static class LlmsManual
         lines.Add("");
         lines.Add(string.Join(" ", commonFlags.Select(f => $"`{f}`")));
         lines.Add("");
+        lines.Add("## Exit codes");
+        lines.Add("");
+        lines.Add("| code | meaning |");
+        lines.Add("|---|---|");
+        lines.Add("| 0 | success |");
+        lines.Add("| 1 | business miss (file not found, no match, already exists) |");
+        lines.Add("| 2 | usage or system error (unknown command, bad flag, missing argument) |");
+        lines.Add("");
+        lines.Add("## Output contract");
+        lines.Add("");
+        lines.Add("`--json` wraps output in an envelope `{success, data | error, warnings?}`; the error");
+        lines.Add("object carries `code` + `suggestion` for programmatic handling. Human-mode errors go to");
+        lines.Add("stderr. JSON field order is stable (insertion order, never alphabetized).");
+        lines.Add("");
         lines.Add("## Runnable examples");
         lines.Add("");
         lines.Add("```bash");
-        lines.Add("officecli create report.docx");
-        lines.Add("officecli add report.docx /body --type paragraph --prop text=\"Summary\" --prop style=Heading1");
-        lines.Add("officecli set data.xlsx '/Sheet1/A1' --prop value=Name --prop bold=true");
-        lines.Add("officecli get slides.pptx '/slide[1]' --depth 1 --json");
-        lines.Add("officecli query report.docx 'paragraph[style!=Normal]'");
-        lines.Add("officecli view deck.pptx html            # rendered snapshot (agents: look, then fix)");
-        lines.Add("officecli validate report.docx");
-        lines.Add("officecli close report.docx               # flush resident before non-officecli readers");
+        lines.AddRange(OfficeCli.Help.HelpFace.Examples["root"]);
         lines.Add("```");
         lines.Add("");
         lines.Add("Hit a defect? File it one-key: `officecli issue new \"<title>\" --body \"<repro>\"`.");
@@ -123,14 +128,5 @@ internal static class LlmsManual
         }
         Console.WriteLine(string.Join(Environment.NewLine, lines));
         return 0;
-    }
-
-    private static string FirstSentence(string? description)
-    {
-        if (string.IsNullOrEmpty(description)) return "";
-        var text = description.Trim();
-        var cut = text.IndexOfAny(['.', ':', ';', '\n']);
-        if (cut > 0) text = text[..cut];
-        return text.Length <= 90 ? text : text[..90] + "…";
     }
 }

@@ -156,6 +156,19 @@ if (args.Length > 0)
     }
 }
 
+// Help flags at ANY later position (`officecli get f.docx -h`) route through
+// the same `help` face so every help request renders from one renderer
+// (cli-docs 帮助面). Exact flag tokens only — a `--help` appearing where an
+// option VALUE was expected (`--prop --help`) already showed help under SCL
+// (the help option wins during parse), so the rewrite changes the rendering
+// path, not the outcome. Positionals after the command name are dropped:
+// they are operands of the command, not of its help.
+if (args.Length > 2 && args[0] != "help"
+    && Array.FindIndex(args, a => a is "-h" or "--help" or "-?") > 1)
+{
+    args = new[] { "help", args[0] };
+}
+
 // MCP commands: officecli mcp [target]
 if (args.Length >= 1 && args[0] == "mcp")
 {
@@ -288,8 +301,15 @@ if (args.Length >= 1 && args[0] == "load_skill")
 }
 
 // Config command: officecli config <key> [value]
-if (args.Length >= 2 && args[0] == "config")
+if (args.Length >= 1 && args[0] == "config")
 {
+    // Bare `officecli config` prints the usage blurb (navigation, not an
+    // error — same discipline as the bare-invocation face).
+    if (args.Length == 1)
+    {
+        OfficeCli.CommandBuilder.WriteEarlyDispatchUsage("config", Console.Out);
+        return 0;
+    }
     OfficeCli.Core.CliLogger.LogCommand(args);
     return OfficeCli.Core.UpdateChecker.HandleConfigCommand(args.Skip(1).ToArray());
 }
@@ -307,16 +327,27 @@ if (Environment.GetEnvironmentVariable("OFFICECLI_SKIP_UPDATE") != "1")
 
 var rootCommand = OfficeCli.CommandBuilder.BuildRootCommand();
 
-if (args.Length == 0)
-{
-    rootCommand.Parse("help").Invoke();
-    return 0;
-}
-
 // Response-file token replacement is OFF: a bare `@…` token must reach the
 // handler verbatim (`set row[N] --prop @height=25` forces the ROW-PROPERTY
 // side of a column-shadow collision, same escape as `query row[@height…]`);
 // the default replacer would reject it as "response file not found".
 var parseResult = rootCommand.Parse(args,
     new System.CommandLine.ParserConfiguration { ResponseFileTokenReplacer = null });
+// Usage errors (unknown command, missing argument, bad flag): print the
+// parser message to stderr plus the standard help face for the deepest
+// command reached — NOT SCL's built-in error dump, which renders a different
+// help layout than every explicit `--help` path. Exit-code contract
+// (cli-docs 输出协议, grep family): 0 success / 1 business miss /
+// 2 usage + system error. Handler business codes pass through untouched.
+if (parseResult.Errors.Count > 0)
+{
+    foreach (var error in parseResult.Errors)
+        Console.Error.WriteLine(error.Message);
+    var deepest = parseResult.CommandResult.Command;
+    if (deepest is System.CommandLine.RootCommand r)
+        OfficeCli.Help.HelpFace.RenderRoot(r, Console.Out);
+    else
+        OfficeCli.Help.HelpFace.RenderCommand(deepest, rootCommand, Console.Out);
+    return 2;
+}
 return parseResult.Invoke();
