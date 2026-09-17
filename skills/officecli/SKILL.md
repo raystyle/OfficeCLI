@@ -13,10 +13,10 @@ If `officecli` is not installed:
 
 ```bash
 # macOS / Linux
-curl -fsSL https://d.officecli.ai/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/raystyle/OfficeCLI/main/install.sh | bash
 
 # Windows (PowerShell)
-irm https://d.officecli.ai/install.ps1 | iex
+irm https://raw.githubusercontent.com/raystyle/OfficeCLI/main/install.ps1 | iex
 ```
 
 Verify with `officecli --version`. If still not found after install, open a new terminal.
@@ -86,6 +86,18 @@ officecli create data.xlsx
 officecli set data.xlsx /Sheet1/A1 --prop value="Name" --prop bold=true
 officecli set data.xlsx /Sheet1/A2 --prop value="Alice"
 ```
+
+## Defect reporting (agent discipline)
+
+Hit a defect mid-session — wrong output, crash, schema/doc mismatch — file it one-key; version/platform/host context is attached automatically (issues.ohmygh.com, REQ-057). Do NOT hand-compose bug reports.
+
+```bash
+officecli issue new "<title>" --body "<evidence: command, input, expected vs actual>"
+officecli issue list                    # read face (default tool=officecli)
+officecli issue show <id>               # full detail
+```
+
+Include the failing command and a minimal repro in `--body`; keep it under 20000 chars.
 
 ---
 
