@@ -85,6 +85,19 @@ static partial class CommandBuilder
                 "Equivalent to: installing the binary, then `officecli skills install` and `officecli mcp <target>`.",
                 "Targets: claude, copilot, codex, cursor, pi, windsurf, vscode, minimax, opencode, openclaw, nanobot, zeroclaw, hermes, dsh, all",
             },
+            ["issue"] = new[]
+            {
+                "Usage:",
+                "  officecli issue new \"<title>\" [--body <text>] [--tool <name>]",
+                "      File an issue (auto context: tool=officecli, version, platform, host)",
+                "  officecli issue list [--tool <t>] [--status <s>] [--limit <n>] [--json]",
+                "      List issues, newest first (default tool=officecli, limit=20)",
+                "  officecli issue show <id> [--json]",
+                "      Show one issue in full",
+                "",
+                "Unified fleet issue tracker: https://issues.ohmygh.com (REQ-057).",
+                "Agents: hit a defect mid-session — file it one-key, no context gathering needed.",
+            },
         };
 
     /// <summary>

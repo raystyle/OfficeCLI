@@ -87,6 +87,18 @@ officecli set data.xlsx /Sheet1/A1 --prop value="Name" --prop bold=true
 officecli set data.xlsx /Sheet1/A2 --prop value="Alice"
 ```
 
+## Defect reporting (agent discipline)
+
+Hit a defect mid-session — wrong output, crash, schema/doc mismatch — file it one-key; version/platform/host context is attached automatically (issues.ohmygh.com, REQ-057). Do NOT hand-compose bug reports.
+
+```bash
+officecli issue new "<title>" --body "<evidence: command, input, expected vs actual>"
+officecli issue list                    # read face (default tool=officecli)
+officecli issue show <id>               # full detail
+```
+
+Include the failing command and a minimal repro in `--body`; keep it under 20000 chars.
+
 ---
 
 ## L1: Create, Read & Inspect

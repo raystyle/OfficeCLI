@@ -168,6 +168,13 @@ if (args.Length >= 1 && args[0] == "install")
     return OfficeCli.Core.Installer.Run(args.Skip(1).ToArray());
 }
 
+// Issue commands (unified fleet entry, issues.ohmygh.com, REQ-057):
+// agents file defects one-key with automatic tool/version/platform/host context.
+if (args.Length >= 1 && args[0] == "issue")
+{
+    return OfficeCli.Core.IssueCli.Run(args.Skip(1).ToArray());
+}
+
 // Legacy alias
 if (args.Length == 1 && args[0] == "mcp-serve")
 {
