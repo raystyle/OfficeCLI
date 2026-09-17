@@ -98,6 +98,14 @@ if (args.Length == 1 && args[0] == "--output-schema-crc")
     return 0;
 }
 
+// Agent-facing compact manual, rendered from the live command tree (REQ-060):
+//   officecli --llm          markdown manual (≤120 lines)
+//   officecli --llm --json   machine form
+if (args.Length >= 1 && args[0] == "--llm")
+{
+    return OfficeCli.Core.LlmsManual.Run(args.Contains("--json"));
+}
+
 // Unify `--help` with `help` so AI agents see one help surface, not two.
 //   officecli [--help|-h|-?]              → officecli help
 //   officecli <cmd> [--help|-h|-?] [...]  → officecli help <cmd>

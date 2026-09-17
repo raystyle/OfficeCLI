@@ -28,6 +28,7 @@ static partial class CommandBuilder
             ["mcp"]     = "Start the MCP stdio server, or register/unregister officecli with an MCP client. Run 'officecli help mcp' for full usage.",
             ["skills"]  = "Install agent skill definitions (Claude Code, Cursor, Copilot, ...). Run 'officecli help skills' for full usage.",
             ["install"] = "One-step setup: install binary + skills + MCP for detected agents. Run 'officecli help install' for full usage.",
+            ["issue"]   = "File/read fleet issues on issues.ohmygh.com (auto tool/version/platform/host). Run 'officecli help issue' for full usage.",
         };
 
     internal static IEnumerable<Command> BuildIntegrationStubCommands()
