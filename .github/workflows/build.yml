@@ -295,13 +295,13 @@ jobs:
           generate_release_notes: true
           make_latest: true
 
-      - name: Seed env mirror (officecli/<ver>/ immutable segment)
+      - name: Seed env mirror version segment (immutable copy)
         # 自播接线(总台令 2026-09-17「自播,我们验证」):release 即推
         # officecli/<version>/ 段到 env 桶,与 ohmycloud env-seed 同一对象契约
         # (三键资产 + 逐件原生 sha256sum 边车)+ 版本段 immutable 头
         # (x-amz-object-immutable,一次成型防覆写)。
         # --ignore-existing:已播版本(如 v1.0.152 总台手播段)不重推,
-        # dispatch 空跑全 SKIP 即绿;新版本段首发即自播。
+        # dispatch 空跑全 SKIP 即绿;新版本段首发即自播。版本段只 copy 不 sync。
         if: env.HAS_R2 == 'true'
         env:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -331,5 +331,42 @@ jobs:
             --ignore-existing \
             --header-upload "x-amz-object-immutable: true" \
             --transfers 6 -v
-          echo "seed done: rclone ls of segment ->"
+          echo "version segment seeded:"
           rclone lsf "omcr2:$R2_BUCKET/officecli/$VER" --files-only
+
+      - name: Sync env mirror stable segment (rolling channel)
+        # 总台补令 2026-09-17(对齐 ark 发布管理下载终态):officecli/stable/
+        # 滚动段 = install.sh 与自更新的稳定通道。rclone sync 全资产(三键加
+        # 边车),--include 同 hst 形 + --delete-excluded,Cache-Control
+        # max-age=60(滚动段短缓存)——区别于版本段,此处不 immutable。
+        if: env.HAS_R2 == 'true'
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          set -euo pipefail
+          export RCLONE_CONFIG_OMCR2_TYPE=s3
+          export RCLONE_CONFIG_OMCR2_PROVIDER=Cloudflare
+          export RCLONE_CONFIG_OMCR2_ENDPOINT="$R2_ENDPOINT"
+          export RCLONE_CONFIG_OMCR2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
+          export RCLONE_CONFIG_OMCR2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+          export RCLONE_CONFIG_OMCR2_NO_CHECK_BUCKET=true
+          rclone sync seed "omcr2:$R2_BUCKET/officecli/stable" \
+            --include "officecli-*" \
+            --delete-excluded \
+            --header-upload "Cache-Control: max-age=60" \
+            --transfers 6 -v
+          echo "stable segment now:"
+          rclone lsf "omcr2:$R2_BUCKET/officecli/stable" --files-only
+
+      - name: Pin release latest
+        # 总台补令 2026-09-17:末步 gh release edit <tag> --latest 钉回,防
+        # release 遮蔽 releases/latest(ark/hst/reader 同形)。
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release edit "$GITHUB_REF_NAME" --latest
+          gh release view "$GITHUB_REF_NAME" --json isDraft,tagName --jq '"latest pinned: " + .tagName + " draft=" + (.isDraft|tostring)'
