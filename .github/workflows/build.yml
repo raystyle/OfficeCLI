@@ -285,12 +285,15 @@ jobs:
           echo "=== SHA256SUMS ==="
           cat SHA256SUMS
 
-      - name: Create Draft Release
+      - name: Publish Release
+        # 总台回执 2026-09-17:draft 态对 catalog live 对账与舰队下载是 404 盲区
+        # (ark v1.3.0 当日 Draft 陷阱同族实录)。家规形 = ark/hst/reader 皆直发
+        # --latest;本仓对齐,release 步出即 published+latest,镜像自播步随行。
         uses: softprops/action-gh-release@v3
         with:
           files: artifacts/**/*
           generate_release_notes: true
-          draft: true
+          make_latest: true
 
       - name: Seed env mirror (officecli/<ver>/ immutable segment)
         # 自播接线(总台令 2026-09-17「自播,我们验证」):release 即推
