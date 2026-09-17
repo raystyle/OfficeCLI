@@ -107,6 +107,18 @@ if (args.Length >= 1 && args[0] == "--llms")
     return OfficeCli.Core.LlmsManual.Run(args.Contains("--json"));
 }
 
+// Bare invocation is a NAVIGATION event, not an error (cli-docs 乙面第五件,
+// S040 standard): compact face — one line of positioning, one line each for
+// agent and human discovery, both pointing at --llms. Exit 0 always.
+if (args.Length == 0)
+{
+    var version = OfficeCli.Core.IssueCli.SelfVersion();
+    Console.WriteLine($"officecli {version} — AI-friendly CLI for Office documents (.docx/.xlsx/.pptx)");
+    Console.WriteLine("Agent: officecli --llms (command manifest; --llms --json machine form)");
+    Console.WriteLine("Human: officecli --help (usage) · officecli help (schema-driven reference)");
+    return 0;
+}
+
 // Unify `--help` with `help` so AI agents see one help surface, not two.
 //   officecli [--help|-h|-?]              → officecli help
 //   officecli <cmd> [--help|-h|-?] [...]  → officecli help <cmd>
