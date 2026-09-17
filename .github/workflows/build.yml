@@ -364,9 +364,10 @@ jobs:
       - name: Pin release latest
         # 总台补令 2026-09-17:末步 gh release edit <tag> --latest 钉回,防
         # release 遮蔽 releases/latest(ark/hst/reader 同形)。
+        # --repo 必带:本 job 无 checkout 步,gh 无 git 上下文(v1.0.153 实弹教训)。
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release edit "$GITHUB_REF_NAME" --latest
-          gh release view "$GITHUB_REF_NAME" --json isDraft,tagName --jq '"latest pinned: " + .tagName + " draft=" + (.isDraft|tostring)'
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --latest
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft,tagName --jq '"latest pinned: " + .tagName + " draft=" + (.isDraft|tostring)'
