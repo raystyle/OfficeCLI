@@ -46,14 +46,20 @@ jobs:
           echo "VER=${TAG#v}" >> "$GITHUB_ENV"
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" -D dist --clobber
           ls -l dist
-      - name: 边车生成(原生 sha256sum 格式)
+      - name: 边车生成(全 RID 逐件,原生 sha256sum 格式)
+        # release 全量资产入段(首播实证:8 RID 全进);逐件边车 = 镜像锚契约,
+        # 一件不落。SHA256SUMS 聚合件不匹配 officecli-* 通配,天然不入段。
         run: |
           set -euo pipefail
           cd dist
-          for f in officecli-win-x64.exe officecli-linux-x64 officecli-mac-arm64; do
-            test -f "$f" || { echo "::error::asset $f missing from release"; exit 1; }
+          n=0
+          for f in officecli-*; do
+            case "$f" in *.sha256) continue;; esac
             sha256sum "$f" > "$f.sha256"
+            n=$((n+1))
           done
+          [ "$n" -ge 3 ] || { echo "::error::expected >=3 officecli assets, got $n"; exit 1; }
+          echo "sidecars generated: $n"
       - run: command -v rclone >/dev/null || (curl -fsSL https://rclone.org/install.sh | sudo bash)
       - name: 灌段(版本段 immutable 长缓存 + stable 滚动短缓存)
         run: |
