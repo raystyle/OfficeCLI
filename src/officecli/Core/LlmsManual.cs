@@ -8,11 +8,12 @@ using System.Text.Json;
 namespace OfficeCli.Core;
 
 /// <summary>
-/// `officecli --llm` — agent-facing compact manual rendered from the LIVE
-/// command tree (REQ-060 face 1): never hand-maintained, cannot drift from
-/// the real surface. Bare `--llm` prints a markdown manual (name, version,
-/// one-line positioning, subcommand table, common flags, runnable examples,
-/// ≤120 lines); `--llm --json` prints the machine form.
+/// `officecli --llms` — agent-facing compact manual rendered from the LIVE
+/// command tree (REQ-060 face 1; flag name is the family standard per
+/// 总台更正单 2026-09-17, omc D31 form): never hand-maintained, cannot drift
+/// from the real surface. Bare `--llms` prints a markdown manual (name,
+/// version, one-line positioning, subcommand table, common flags, runnable
+/// examples, ≤120 lines); `--llms --json` prints the machine form.
 /// </summary>
 internal static class LlmsManual
 {
@@ -82,7 +83,7 @@ internal static class LlmsManual
             "AI-friendly CLI for Office documents (.docx/.xlsx/.pptx): single self-contained binary,",
             "no Office install; renders documents to HTML/PNG so agents can look at what they edit.",
             "",
-            "Generated from the live command tree — the agent-facing source of truth (`officecli --llm --json`",
+            "Generated from the live command tree — the agent-facing source of truth (`officecli --llms --json`",
             "for the machine form; `officecli help` for schema-driven detail per format/element).",
             "",
             "## Subcommands",
@@ -117,7 +118,7 @@ internal static class LlmsManual
         {
             // Hard budget: subcommand table grows with the tree — fail loudly rather
             // than ship a manual agents won't finish reading.
-            Console.Error.WriteLine($"--llm manual is {lines.Count} lines (budget {MaxLines}); trim the table or examples.");
+            Console.Error.WriteLine($"--llms manual is {lines.Count} lines (budget {MaxLines}); trim the table or examples.");
             return 1;
         }
         Console.WriteLine(string.Join(Environment.NewLine, lines));

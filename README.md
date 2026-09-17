@@ -58,4 +58,4 @@ officecli validate report.docx && officecli close report.docx
 ```
 
 发现缺陷?一键上报(自动带版本/平台/主机):`officecli issue new "<标题>" --body "<复现>"`。
-Agent 紧凑说明书:`officecli --llm`(机器形 `--llm --json`)。完整能力参考:`officecli help`。
+Agent 紧凑说明书:`officecli --llms`(机器形 `--llms --json`)。完整能力参考:`officecli help`。

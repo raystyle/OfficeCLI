@@ -98,10 +98,11 @@ if (args.Length == 1 && args[0] == "--output-schema-crc")
     return 0;
 }
 
-// Agent-facing compact manual, rendered from the live command tree (REQ-060):
-//   officecli --llm          markdown manual (≤120 lines)
-//   officecli --llm --json   machine form
-if (args.Length >= 1 && args[0] == "--llm")
+// Agent-facing compact manual, rendered from the live command tree (REQ-060;
+// flag name per 总台更正单 2026-09-17: --llms is the family standard, omc D31 form):
+//   officecli --llms          markdown manual (≤120 lines)
+//   officecli --llms --json   machine form
+if (args.Length >= 1 && args[0] == "--llms")
 {
     return OfficeCli.Core.LlmsManual.Run(args.Contains("--json"));
 }
