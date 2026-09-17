@@ -263,6 +263,11 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
+    env:
+      # Gate for the mirror self-seed step (same pattern as HAS_CERT in the
+      # build job): fork-absent secrets degrade to a skipped step, never a
+      # failed release.
+      HAS_R2: ${{ secrets.R2_ENDPOINT != '' }}
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v8
@@ -286,3 +291,42 @@ jobs:
           files: artifacts/**/*
           generate_release_notes: true
           draft: true
+
+      - name: Seed env mirror (officecli/<ver>/ immutable segment)
+        # 自播接线(总台令 2026-09-17「自播,我们验证」):release 即推
+        # officecli/<version>/ 段到 env 桶,与 ohmycloud env-seed 同一对象契约
+        # (三键资产 + 逐件原生 sha256sum 边车)+ 版本段 immutable 头
+        # (x-amz-object-immutable,一次成型防覆写)。
+        # --ignore-existing:已播版本(如 v1.0.152 总台手播段)不重推,
+        # dispatch 空跑全 SKIP 即绿;新版本段首发即自播。
+        if: env.HAS_R2 == 'true'
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          set -euo pipefail
+          curl -fsSL https://rclone.org/install.sh | sudo bash >/dev/null 2>&1
+          rclone version | head -1
+          export RCLONE_CONFIG_OMCR2_TYPE=s3
+          export RCLONE_CONFIG_OMCR2_PROVIDER=Cloudflare
+          export RCLONE_CONFIG_OMCR2_ENDPOINT="$R2_ENDPOINT"
+          export RCLONE_CONFIG_OMCR2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
+          export RCLONE_CONFIG_OMCR2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+          export RCLONE_CONFIG_OMCR2_NO_CHECK_BUCKET=true
+          VER="${GITHUB_REF_NAME#v}"
+          mkdir -p seed
+          for f in officecli-win-x64.exe officecli-linux-x64 officecli-mac-arm64; do
+            test -f "artifacts/$f" || { echo "FAIL: artifacts/$f missing"; exit 1; }
+            cp "artifacts/$f" "seed/$f"
+            (cd seed && sha256sum "$f" > "$f.sha256")
+          done
+          echo "--- seed plan: officecli/$VER/ ---"
+          ls -l seed
+          rclone copy seed "omcr2:$R2_BUCKET/officecli/$VER" \
+            --ignore-existing \
+            --header-upload "x-amz-object-immutable: true" \
+            --transfers 6 -v
+          echo "seed done: rclone ls of segment ->"
+          rclone lsf "omcr2:$R2_BUCKET/officecli/$VER" --files-only
