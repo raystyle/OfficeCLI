@@ -129,6 +129,7 @@ internal static class HelpFace
     // targets credential-type variables).
     private static readonly (string Name, string Desc, string Default)[] EnvVars =
     {
+        ("OFFICECLI_ENVELOPE", "machine envelope shape: compat (ok + success legacy) or strict (ok-only; errors as string + stderr single-line)", "compat"),
         ("OFFICECLI_RESIDENT_FLUSH", "resident flush policy: each|auto|<seconds>|off", "auto"),
         ("OFFICECLI_RESIDENT_IDLE_SECONDS", "resident idle exit in seconds", "7200"),
         ("OFFICECLI_NO_AUTO_RESIDENT", "set 1 to forbid auto-starting a resident (explicit open still works)", "unset"),

@@ -38,6 +38,7 @@ curl -fsSL https://raw.githubusercontent.com/raystyle/OfficeCLI/main/install.sh 
 
 | 变量 | 作用 |
 |---|---|
+| `OFFICECLI_ENVELOPE` | 机器信封形:`compat`(ok 与 legacy success 并存,缺省)\|`strict`(仅 ok;错误折字符串 + stderr 单行 `{code,message,cta}`) |
 | `OFFICECLI_RESIDENT_FLUSH` | resident 落盘策略:`each`(每命令)\|`auto`(自适应 2-10s)\|`<秒>`\|`off` |
 | `OFFICECLI_RESIDENT_IDLE_SECONDS` | resident 空闲退出秒数(默认 7200) |
 | `OFFICECLI_NO_AUTO_RESIDENT` | 置 1 禁止自动拉起常驻(显式 `open` 仍可用) |

@@ -27,7 +27,7 @@ Verify with `officecli --version`. If still not found after install, open a new 
 
 **L1 (read) → L2 (DOM edit) → L3 (raw XML)**. Always prefer higher layers. Add `--json` for structured output.
 
-**`--json` envelope** (stable field order): `{ok, success, data | error, warnings?, meta?}`. `ok` mirrors `success` (read `ok` first, fall back to `success` on older binaries); `error` carries `code` + `suggestion`, plus typed `meta.cta`. Family flags: `--format toon|json|yaml|md`, `--filter-output data.path.to.key`, `--full-output`, and `<cmd> --schema` for that command's JSON Schema. Exit codes: 0 success, 1 business miss, 2 usage/system error.
+**`--json` envelope** (stable field order): `{ok, success, data | error, warnings?, meta?}`. `ok` mirrors `success` (read `ok` first, fall back to `success` on older binaries); `error` carries `code` + `suggestion`, plus typed `meta.cta`. Family flags: `--format toon|json|yaml|md`, `--filter-output data.path.to.key`, `--full-output`, and `<cmd> --schema` for that command's JSON Schema. Exit codes: 0 success, 1 business miss, 2 usage/system error. Strict preview: `OFFICECLI_ENVELOPE=strict` drops `success`/`message` and emits errors on stderr as one-line `{code, message, cta}`.
 
 **Before doc work, check Specialized Skills** (bottom of this file). Fundraising decks, academic papers, financial models, dashboards, and Morph animations need their own skill loaded first — `load_skill` once, then proceed.
 

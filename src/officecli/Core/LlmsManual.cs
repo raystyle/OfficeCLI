@@ -110,7 +110,8 @@ internal static class LlmsManual
         lines.Add("`--json` wraps output in an envelope `{ok, success, data | error, warnings?}` (`ok` mirrors");
         lines.Add("`success`); the error object carries `code` + `suggestion` + typed `meta.cta`. Family flags:");
         lines.Add("`--format toon|json|yaml|md`, `--filter-output <keys>`, `--full-output`, `<cmd> --schema`.");
-        lines.Add("Human-mode errors go to stderr. Field order stable (insertion, never alphabetized).");
+        lines.Add("Strict preview: OFFICECLI_ENVELOPE=strict drops success/message and puts errors");
+        lines.Add("on stderr as one-line {code, message, cta}. Field order stable (never alphabetized).");
         lines.Add("");
         lines.Add("## Runnable examples");
         lines.Add("");

@@ -120,6 +120,15 @@ if (args.Length == 2 && args[1] == "--schema")
     return OfficeCli.Help.SchemaFace.Run(args[0]);
 }
 var outputRequest = OfficeCli.Core.OutputRequest.Extract(ref args);
+// OFFICECLI_ENVELOPE=strict preview (issue #14 wave b enabler): normalizes the
+// compat envelope to the cli-docs target shape at the stdout boundary — works
+// identically standalone and through the resident (the client owns the pipe).
+if (string.Equals(Environment.GetEnvironmentVariable("OFFICECLI_ENVELOPE"),
+        "strict", StringComparison.OrdinalIgnoreCase))
+{
+    outputRequest ??= new OfficeCli.Core.OutputRequest();
+    outputRequest.Strict = true;
+}
 if (outputRequest != null)
 {
     var outputRewriter = outputRequest.Install();

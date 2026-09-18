@@ -21,11 +21,20 @@ internal sealed class OutputRequest
     public string Format { get; init; } = "toon";      // toon|json|yaml|md
     public string[] FilterKeys { get; init; } = [];    // envelope-rooted paths: data.x,data.a[0].y
     public bool Full { get; init; }                    // --full-output: envelope + meta
+
+    /// <summary>OFFICECLI_ENVELOPE=strict preview (issue #14 wave b enabler):
+    /// normalize the compat envelope to the cli-docs target shape — drop
+    /// success/message, fold the error object into a human string + a
+    /// single-line {code, message, cta?} on stderr. Compat stays the default
+    /// until the cross-repo consumer flip (wave b) and success retirement
+    /// (wave c). Mutable: Program ORs it into a flag-derived request.</summary>
+    public bool Strict { get; set; }
+
     public string Command { get; init; } = "";
 
     /// <summary>Machine mode is implied by any non-toon format or by filtering/full:
     /// the envelope post-processors only make sense over the machine envelope.</summary>
-    public bool NeedsRewrite => Format is "yaml" or "md" || FilterKeys.Length > 0 || Full;
+    public bool NeedsRewrite => Format is "yaml" or "md" || FilterKeys.Length > 0 || Full || Strict;
 
     /// <summary>
     /// Extract the flag family from the raw CLI args (exact tokens only, any
@@ -173,6 +182,7 @@ internal sealed class OutputRequest
 
         private string Transform(JsonObject envelope)
         {
+            if (_request.Strict) NormalizeStrict(envelope);
             if (_request.Full)
             {
                 var meta = envelope["meta"] as JsonObject ?? new JsonObject();
@@ -189,6 +199,44 @@ internal sealed class OutputRequest
                 "md" => ToMarkdown(envelope),
                 _ => envelope.ToJsonString(OutputFormatter.PublicJsonOptions) + Environment.NewLine,
             };
+        }
+
+        /// <summary>Strict-shape normalization (wave b preview): success/message
+        /// drop (ok is the verdict); the structured error object folds into a
+        /// human-readable `error` string on stdout plus a single-line
+        /// {code, message, cta?} JSON on stderr (cli-docs 错误分道). The stderr
+        /// line is hand-composed — no serializer — so the trimmed publish
+        /// cannot lose it to reflection stripping.</summary>
+        private static void NormalizeStrict(JsonObject envelope)
+        {
+            envelope.Remove("success");
+            envelope.Remove("message");
+            if (envelope["error"] is not JsonObject err) return;
+
+            var message = err["error"]?.ToString() ?? "";
+            var code = err["code"]?.ToString() ?? "";
+            var cta = envelope["meta"]?["cta"] as JsonObject;
+            envelope["error"] = message;
+
+            var line = new StringBuilder("{\"code\":").Append(QuoteJson(code))
+                .Append(",\"message\":").Append(QuoteJson(message));
+            if (cta?["description"] is { } desc)
+            {
+                line.Append(",\"cta\":{\"description\":").Append(QuoteJson(desc.ToString()));
+                if (cta["commands"] is JsonArray cmds && cmds.Count > 0
+                    && cmds[0] is JsonObject first)
+                {
+                    var command = first["command"]?.ToString() ?? "";
+                    var description = first["description"]?.ToString();
+                    line.Append(",\"commands\":[{\"command\":").Append(QuoteJson(command));
+                    if (description != null)
+                        line.Append(",\"description\":").Append(QuoteJson(description));
+                    line.Append("}]"); // close the command object, then the array
+                }
+                line.Append('}'); // close cta
+            }
+            line.Append('}'); // close root
+            Console.Error.WriteLine(line.ToString());
         }
 
         /// <summary>Key-path filter rooted at the ENVELOPE: paths like
