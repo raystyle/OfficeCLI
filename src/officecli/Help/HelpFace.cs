@@ -249,12 +249,15 @@ internal static class HelpFace
 
     private static IEnumerable<(string Label, string Desc)> RootOptionRows(RootCommand root)
     {
-        // Synthetic help row first (the built-in help option lives on the
-        // root's option list with an SCL-internal description).
+        // Synthetic help row (the built-in help option lives on the root's
+        // option list with an SCL-internal description), plus the Program-level
+        // family flags (issue #14 wave a) dispatched before the tree — same
+        // registry SchemaFace serves, one source.
         yield return ("--help, -h, -?", "Show help and usage information");
         foreach (var row in root.Options.Where(o => !o.Hidden && o.Name != "--help")
                      .Select(OptionRow)
-                     .OrderBy(r => r.Label, StringComparer.Ordinal))
+                     .Concat(SchemaFace.FamilyFlags.Select(f => (f.Name, f.Desc)))
+                     .OrderBy(r => r.Item1, StringComparer.Ordinal))
             yield return row;
     }
 

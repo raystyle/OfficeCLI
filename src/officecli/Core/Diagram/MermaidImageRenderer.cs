@@ -86,6 +86,30 @@ public static class MermaidImageRenderer
     public const string SourceTag = "mermaid:";
 
     /// <summary>
+    /// Determinism preamble injected into every rendered page BEFORE any mermaid
+    /// code runs (issue #5). mermaid derives SVG element ids from
+    /// <c>Date.now()</c>/<c>Math.random()</c> (<c>mermaid-1789717022218</c>) and
+    /// some layouts (gitGraph branch spacing) jitter with the same sources — two
+    /// renders of the SAME source produced PNGs differing at byte level, so
+    /// rendered diagram artifacts could not be md5-pinned for CI regression
+    /// checks. Seeding <c>Math.random</c> (mulberry32, fixed seed) and freezing
+    /// <c>Date.now</c>/<c>performance.now</c> makes the rendered SVG byte-identical
+    /// run to run; the raster itself is already deterministic (Chrome
+    /// --disable-gpu software raster verified byte-identical across runs).
+    /// <c>new Date()</c> stays LIVE so gantt charts anchored to relative dates
+    /// keep their real-world axis — such charts are byte-stable within a day,
+    /// not across days (documented residual). The mmdc backend runs its own
+    /// page without this preamble (no script-injection hook in mermaid-cli);
+    /// it is unaffected either way only by luck of its version.
+    /// </summary>
+    private const string DeterminismPreamble =
+        "(function(){var s=0x3039;Math.random=function(){s|=0;s=s+0x6D2B79F5|0;"
+        + "var t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;"
+        + "return((t^t>>>14)>>>0)/4294967296;};"
+        + "var __frozen=1735689600000;Date.now=function(){return __frozen;};"
+        + "if(window.performance&&performance.now){performance.now=function(){return 0;}}})();";
+
+    /// <summary>
     /// Readability floor for the adaptive one-page default: the smallest fit scale
     /// at which a diagram shrunk to fit a single page/slide stays legible. Mermaid's
     /// default node text is ~16px (=12pt at 96 DPI); shrinking it by this factor
@@ -443,6 +467,10 @@ public static class MermaidImageRenderer
             // one-word outcome SIGNAL (MMDREADY / MMDSYNTAX / MMDERR).
             + "<body><pre id=\"mmderr\" style=\"display:none\"></pre>"
             + "<div id=\"d\" class=\"mermaid\"></div><script>"
+            // Determinism first (issue #5): the stubs must be installed before
+            // mermaid.initialize/run execute — the UMD library only reads these
+            // sources lazily at render time, so loading it above is fine.
+            + DeterminismPreamble
             // atob yields a BYTE string (one Latin-1 char per byte); decode those
             // bytes back as UTF-8 so CJK/emoji in the mermaid source survive. A bare
             // atob() would render "提交" as mojibake ("æ¤").
@@ -506,7 +534,12 @@ public static class MermaidImageRenderer
             + "<style>html,body{margin:0;padding:0;background:" + background + ";font-size:0}"
             + "#d{display:inline-block}#d svg{display:block}</style></head>"
             + "<body><pre id=\"mmderr\" style=\"display:none\"></pre>"
-            + "<div id=\"d\" class=\"mermaid\"></div><script type=\"module\">"
+            + "<div id=\"d\" class=\"mermaid\"></div>"
+            // Determinism stubs as a CLASSIC script: classic scripts execute during
+            // parse while the module below defers, so the stubs are guaranteed
+            // active before any ESM mermaid code runs (issue #5).
+            + "<script>" + DeterminismPreamble + "</script>"
+            + "<script type=\"module\">"
             + "try{"
             + $"const mermaid=(await import(\"{MermaidEsmUrl}\")).default;"
             + elkImport

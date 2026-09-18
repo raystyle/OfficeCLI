@@ -152,7 +152,9 @@ internal static class OutputFormatter
 
     /// <summary>
     /// Wraps pre-serialized data JSON into a unified envelope with optional warnings.
-    /// Output: { "success": true|false, "data": ..., "warnings": [...] }
+    /// Output: { "success": true|false, "ok": true|false, "data": ..., "warnings": [...] }
+    /// (`ok` mirrors `success` — cli-docs 输出协议迁移 wave a, issue #14: new
+    /// consumers read ok; success retires in wave c after the fleet flips.)
     ///
     /// CONTRACT: `success` reflects the *business* outcome of the command, not
     /// process liveness. Pass `success: false` when the command ran to
@@ -181,7 +183,10 @@ internal static class OutputFormatter
     public static string WrapEnvelope(string dataJson, List<CliWarning>? warnings = null, bool success = true)
     {
         warnings = MergeContextWarnings(warnings);
-        var envelope = new JsonObject { ["success"] = success };
+        // `ok` mirrors `success` (cli-docs 输出协议迁移 wave a, issue #14): new
+        // consumers read ok, legacy consumers keep success; both stay until the
+        // consumer flip (wave b) and success retirement (wave c).
+        var envelope = new JsonObject { ["success"] = success, ["ok"] = success };
 
         // Parse and embed data as-is (preserves original structure)
         try { envelope["data"] = JsonNode.Parse(dataJson); }
@@ -203,6 +208,7 @@ internal static class OutputFormatter
         var envelope = new JsonObject
         {
             ["success"] = success,
+            ["ok"] = success,
             // BUG-R6-04: `add --json` previously emitted only `message`,
             // diverging from get/set/dump which surface a `data` field.
             // Keep `message` for backwards compatibility but also expose
@@ -227,6 +233,7 @@ internal static class OutputFormatter
         var envelope = new JsonObject
         {
             ["success"] = success,
+            ["ok"] = success,
             ["message"] = message,
             ["data"] = JsonSerializer.SerializeToNode(data, AppJsonContext.Default.DocumentNode)
         };
@@ -250,6 +257,7 @@ internal static class OutputFormatter
         var envelope = new JsonObject
         {
             ["success"] = false,
+            ["ok"] = false,
             ["message"] = message
         };
 
@@ -261,7 +269,11 @@ internal static class OutputFormatter
 
     /// <summary>
     /// Wraps an error into an envelope.
-    /// Output: { "success": false, "error": { ... } }
+    /// Output: { "success": false, "ok": false, "error": { ... }, "meta": { cta } }
+    /// meta.cta is the typed form (cli-docs 输出协议 wave a, issue #14) of the
+    /// error's own semantic fields: error.help (a runnable command line) becomes
+    /// cta.commands[].command, error.suggestion its description — one source,
+    /// no second hand-maintained copy.
     /// </summary>
     public static string WrapErrorEnvelope(Exception ex)
     {
@@ -269,9 +281,38 @@ internal static class OutputFormatter
         var envelope = new JsonObject
         {
             ["success"] = false,
+            ["ok"] = false,
             ["error"] = JsonSerializer.SerializeToNode(errorResult, AppJsonContext.Default.ErrorResult)
         };
+        var cta = BuildTypedCta(errorResult);
+        if (cta != null)
+        {
+            envelope["meta"] = new JsonObject
+            {
+                ["cta"] = cta,
+            };
+        }
         return envelope.ToJsonString(JsonOptions);
+    }
+
+    /// <summary>Typed CTA block from an error result's semantic fields (wave a):
+    /// help is a runnable command line; suggestion is its human description.</summary>
+    private static JsonNode? BuildTypedCta(ErrorResult error)
+    {
+        if (string.IsNullOrWhiteSpace(error.Help)) return null;
+        var commands = new JsonArray
+        {
+            new JsonObject
+            {
+                ["command"] = error.Help,
+                ["description"] = string.IsNullOrWhiteSpace(error.Suggestion) ? null : error.Suggestion,
+            },
+        };
+        return new JsonObject
+        {
+            ["description"] = "Suggested commands:",
+            ["commands"] = commands,
+        };
     }
 
     public static string FormatError(Exception ex)

@@ -107,6 +107,30 @@ if (args.Length >= 1 && args[0] == "--llms")
     return OfficeCli.Core.LlmsManual.Run(args.Contains("--json"));
 }
 
+// cli-docs 输出协议旗标族 (issue #14 wave a): --schema renders the command's
+// JSON Schema from the live tree (canonical position: right after the command
+// name); --format/--filter-output/--full-output are extracted here and resolved
+// by a stdout rewriter, so no command wiring changes (pure additive wave).
+if (args.Length >= 1 && args[0] == "--schema")
+{
+    return OfficeCli.Help.SchemaFace.Run(null);
+}
+if (args.Length == 2 && args[1] == "--schema")
+{
+    return OfficeCli.Help.SchemaFace.Run(args[0]);
+}
+var outputRequest = OfficeCli.Core.OutputRequest.Extract(ref args);
+if (outputRequest != null)
+{
+    var outputRewriter = outputRequest.Install();
+    if (outputRewriter != null)
+    {
+        // Flush on every exit path (early dispatches return before the main
+        // parse below); the rewriter restores Console.Out before writing.
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => outputRewriter.FlushFinal();
+    }
+}
+
 // Bare invocation is a NAVIGATION event, not an error (cli-docs 乙面第五件,
 // S040 standard): compact face — one line of positioning, one line each for
 // agent and human discovery, both pointing at --llms. Exit 0 always.
