@@ -358,7 +358,9 @@ internal static class LedgerCli
         Console.Error.WriteLine($"ledger {status}: {resp.Trim()}");
         if (json && !string.IsNullOrWhiteSpace(resp))
         {
-            try { JsonNode.Parse(resp.Trim()); Console.WriteLine(OutputFormatter.WrapEnvelopeText(resp.Trim(), success: false)); }
+            // G-4: same parsed-data shape as the success face (WrapEnvelope),
+            // so consumers handle ONE envelope form for both verdicts.
+            try { _ = JsonNode.Parse(resp.Trim()); Console.WriteLine(OutputFormatter.WrapEnvelope(resp.Trim(), success: false)); }
             catch (JsonException) { /* stderr already carries the verbatim body */ }
         }
         if (status == 401) Console.Error.WriteLine("(signature/key: check the local Ed25519 key and that the CLI's embedded public key is registered for this repo on ledger.ohmygh.com)");
@@ -378,6 +380,13 @@ internal static class LedgerCli
         for (int i = 0; i < a.Length; i++)
         {
             var token = a[i];
+            // G-2: POSIX end-of-options — everything after a bare `--` is
+            // positional, so dash-leading titles/ids stay passable.
+            if (token == "--")
+            {
+                positionals.AddRange(a[(i + 1)..]);
+                return positionals;
+            }
             // inline --flag=value form
             string? inline = null;
             if (token.StartsWith("--", StringComparison.Ordinal))
@@ -446,6 +455,9 @@ internal static class LedgerCli
         Console.WriteLine("      One issue with its event history");
         Console.WriteLine("  officecli issue close <n> --digest sha256:<64hex> [--note <text>]");
         Console.WriteLine("      Close chain: result event citing a registered digest, then status=done");
+        Console.WriteLine("      (status flip is server-blocked today; the idempotent result event still");
+        Console.WriteLine("       lands — finishing to done goes through the omc admin face)");
+        Console.WriteLine("Values starting with '-': use --flag=value, --flag -x, or a bare '--' before them.");
         Console.WriteLine();
         Console.WriteLine($"Source of truth: {LedgerClient.ApiBase} (REQ-063 ledger; supersedes issues.ohmygh.com).");
         Console.WriteLine("Repo: " + LedgerClient.RepoId);

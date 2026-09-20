@@ -269,12 +269,19 @@ internal sealed class OutputRequest
         /// known keys are re-assigned in order.</summary>
         private static void ReorderStrictEnvelope(JsonObject envelope)
         {
-            var ordered = new JsonObject { ["ok"] = envelope["ok"]?.DeepClone() };
+            // G-3: whitelist first, then any UNKNOWN keys appended in original
+            // order (nothing dropped); a missing ok is not written as null.
+            var known = new[] { "ok", "error", "data", "warnings", "matched", "meta" };
+            var ordered = new JsonObject();
+            if (envelope["ok"] is { } okv) ordered["ok"] = okv.DeepClone();
             if (envelope["error"] is { } e) ordered["error"] = e.DeepClone();
             if (envelope["data"] is { } d) ordered["data"] = d.DeepClone();
             if (envelope["warnings"] is { } w) ordered["warnings"] = w.DeepClone();
             if (envelope["matched"] is { } m) ordered["matched"] = m.DeepClone();
             if (envelope["meta"] is { } meta) ordered["meta"] = meta.DeepClone();
+            foreach (var (key, value) in envelope)
+                if (!known.Contains(key))
+                    ordered[key] = value?.DeepClone();
             envelope.Clear();
             foreach (var (key, value) in ordered)
                 envelope[key] = value?.DeepClone();

@@ -6,6 +6,12 @@
 
 ## 1.0.159 (review-batch fixes)
 
+- NOTE: the close-chain status flip is server-blocked today (the ledger's
+  status-event validator rejects every `to` shape — probe evidence attached
+  to the review; reported for the service side). `issue close` still records
+  its idempotent result event; finishing an issue to `done` currently goes
+  through the omc admin face. Strict mode adds no stderr line for batch
+  partial failures by design (the per-item verdicts live in data.results).
 - Ledger family (from the pre-push codex review): transport failures are
   caught (unreachable/timeout/bad-JSON to stderr + rc 2, was an rc-134 crash);
   single-pass arg parsing (flag VALUES can no longer be mistaken for the

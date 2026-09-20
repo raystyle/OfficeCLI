@@ -4,4 +4,4 @@ publish/
 trimcheck/
 artifacts/
 *.user
-sdk/python/__pycache__/
+__pycache__/
