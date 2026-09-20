@@ -88,15 +88,30 @@ static partial class CommandBuilder
             ["issue"] = new[]
             {
                 "Usage:",
-                "  officecli issue new \"<title>\" [--body <text>] [--tool <name>]",
-                "      File an issue (auto context: tool=officecli, version, platform, host)",
-                "  officecli issue list [--tool <t>] [--status <s>] [--limit <n>] [--json]",
-                "      List issues, newest first (default tool=officecli, limit=20)",
-                "  officecli issue show <id> [--json]",
-                "      Show one issue in full",
+                "  officecli issue new \"<title>\" --kind bug|improvement --acceptance \"<criteria>\"",
+                "      Open an issue on the repo ledger (kind defaults to bug)",
+                "  officecli issue list [--limit N] [--before <id>] [--json]",
+                "      Family pagination: pages of <=100, has_more saturation hint",
+                "  officecli issue show <n> [--json]",
+                "      One issue with its event history",
+                "  officecli issue close <n> --digest sha256:<64hex> [--note <text>]",
+                "      Close chain: result event citing a registered digest, then status=done",
                 "",
-                "Unified fleet issue tracker: https://issues.ohmygh.com (REQ-057).",
-                "Agents: hit a defect mid-session — file it one-key, no context gathering needed.",
+                "Source of truth: ledger.ohmygh.com (REQ-063; supersedes issues.ohmygh.com).",
+                "Agents: hit a defect mid-session — open it one-key with an acceptance line.",
+            },
+            ["artifact"] = new[]
+            {
+                "Usage:",
+                "  officecli artifact publish --name <n> --kind <kind> --digest sha256:<64hex>",
+                "      [--version <v>] [--git-range <a..b>] [--deps <id,...>] [--outcome success|failure] [--note <t>]",
+                "  officecli artifact attest <id> --type attest_dev|attest_prod|verification_failed|demote|supersede",
+                "  officecli artifact promote <id>",
+                "  officecli artifact list [--current] [--env dev|prod] [--json]",
+                "",
+                "Shared library of verified products: experience, lesson, research, prototype,",
+                "binary, image, wasm, sbom, schema, openapi, eval-set, benchmark, runbook,",
+                "decision, attested-report. Digest = sha256 of content/record (no bytes).",
             },
             ["config"] = new[]
             {

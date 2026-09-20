@@ -145,7 +145,7 @@ if (outputRequest != null)
 // agent and human discovery, both pointing at --llms. Exit 0 always.
 if (args.Length == 0)
 {
-    var version = OfficeCli.Core.IssueCli.SelfVersion();
+    var version = OfficeCli.Core.LedgerCli.SelfVersion();
     Console.WriteLine($"officecli {version} — AI-friendly CLI for Office documents (.docx/.xlsx/.pptx)");
     Console.WriteLine("Agent: officecli --llms (command manifest; --llms --json machine form)");
     Console.WriteLine("Human: officecli --help (usage) · officecli help (schema-driven reference)");
@@ -235,11 +235,18 @@ if (args.Length >= 1 && args[0] == "install")
     return OfficeCli.Core.Installer.Run(args.Skip(1).ToArray());
 }
 
-// Issue commands (unified fleet entry, issues.ohmygh.com, REQ-057):
-// agents file defects one-key with automatic tool/version/platform/host context.
+// Issue + artifact commands (REQ-063 仓级公共账本, ledger.ohmygh.com — the
+// strict superset that retires the issues.ohmygh.com face). Writes are
+// Ed25519-signed by the ledger client; the private key is loaded from env or
+// the local keyfile and never enters argv.
 if (args.Length >= 1 && args[0] == "issue")
 {
-    return OfficeCli.Core.IssueCli.Run(args.Skip(1).ToArray());
+    return OfficeCli.Core.LedgerCli.RunIssue(args.Skip(1).ToArray());
+}
+if (args.Length >= 1 && args[0] is "artifact" or "artifacts")
+{
+    if (args[0] == "artifacts") args[0] = "artifact";
+    return OfficeCli.Core.LedgerCli.RunArtifact(args.Skip(1).ToArray());
 }
 
 // Legacy alias

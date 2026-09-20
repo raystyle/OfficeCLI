@@ -119,7 +119,8 @@ internal static class LlmsManual
         lines.AddRange(OfficeCli.Help.HelpFace.Examples["root"]);
         lines.Add("```");
         lines.Add("");
-        lines.Add("Hit a defect? File it one-key: `officecli issue new \"<title>\" --body \"<repro>\"`.");
+        lines.Add("Hit a defect? `officecli issue new \"<title>\" --kind bug --acceptance \"<criteria>\"`");
+        lines.Add("(repo ledger ledger.ohmygh.com; close cites a registered artifact digest).");
 
         if (lines.Count > MaxLines)
         {

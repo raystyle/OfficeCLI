@@ -45,7 +45,8 @@ curl -fsSL https://raw.githubusercontent.com/raystyle/OfficeCLI/main/install.sh 
 | `OFFICECLI_WATCH_ALLOWED_HOSTS` | watch 预览服务允许的来源主机(默认本机) |
 | `OFFICECLI_SKIP_UPDATE` | 置 1 跳过非阻塞更新检查 |
 | `OFFICECLI_BATCH_ALLOW_STDIN_REDIRECT` | 允许 batch 从重定向 stdin 读命令(默认关,防脚本误用) |
-| `OFFICECLI_ISSUES_API` | `issue` 命令基址覆盖(测试/灰度) |
+| `OFFICECLI_LEDGER_API` | 账本(issue/artifact)基址覆盖(测试/灰度) |
+| `OFFICECLI_LEDGER_KEY_FILE` | Ed25519 私钥密档路径(缺省 `~/.officecli/ledger/officecli-ed25519.key`;或用 `OFFICECLI_LEDGER_KEY` 直设种子) |
 | `OFFICECLI_LOCAL_BINARY` | 安装脚本用本地二进制(离线装机) |
 | `OFFICECLI_MMDC` | mermaid CLI(`mmdc`)路径覆盖 |
 
@@ -63,5 +64,5 @@ officecli view deck.pptx html          # 渲染快照(agent 先看再修)
 officecli validate report.docx && officecli close report.docx
 ```
 
-发现缺陷?一键上报(自动带版本/平台/主机):`officecli issue new "<标题>" --body "<复现>"`。
+发现缺陷?上仓级公共账本开单:`officecli issue new "<标题>" --kind bug --acceptance "<验收>"`(真源 ledger.ohmygh.com,REQ-063;产物沉淀 `officecli artifact publish`)。
 Agent 紧凑说明书:`officecli --llms`(机器形 `--llms --json`)。完整能力参考:`officecli help`。

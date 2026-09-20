@@ -61,7 +61,7 @@ internal static class SchemaFace
                 ["description"] = a.Description ?? "",
             };
             if (a.HasDefaultValue && a.GetDefaultValue() is { } dv) arg["default"] = dv.ToString();
-            arguments.Add(arg);
+            arguments.Add((JsonNode?)arg);
         }
         schema["arguments"] = arguments;
 
@@ -80,11 +80,22 @@ internal static class SchemaFace
                 opt["enum"] = JsonArray(Enum.GetNames(o.ValueType).Select(n => n.ToLowerInvariant()));
             if (o.HasDefaultValue && o.GetDefaultValue() is { } dv && dv.ToString() != "False")
                 opt["default"] = dv.ToString();
-            options.Add(opt);
+            options.Add((JsonNode?)opt);
         }
-        // Program-level family flags (dispatched before the tree — see Program.cs)
+        // Program-level family flags (dispatched before the tree — see Program.cs).
+        // Cast to JsonNode before Add — the generic Add<T> is trim-hostile (IL2026).
         foreach (var (name, desc) in FamilyFlags)
-            options.Add(new JsonObject { ["name"] = name, ["aliases"] = new JsonArray(), ["type"] = TypeName(typeof(void)), ["required"] = false, ["description"] = desc });
+        {
+            var flag = new JsonObject
+            {
+                ["name"] = name,
+                ["aliases"] = new JsonArray(),
+                ["type"] = TypeName(typeof(void)),
+                ["required"] = false,
+                ["description"] = desc,
+            };
+            options.Add((JsonNode?)flag);
+        }
         schema["options"] = options;
 
         schema["output"] = new JsonObject

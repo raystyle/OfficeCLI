@@ -5,8 +5,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>OfficeCli</RootNamespace>
     <AssemblyName>officecli</AssemblyName>
-    <Version>1.0.156</Version>
-    <InformationalVersion>1.0.156+raystyle-fork</InformationalVersion>
+    <Version>1.0.157</Version>
+    <InformationalVersion>1.0.157+raystyle-fork</InformationalVersion>
     <!-- Lineage marker: this build is from the raystyle fork (self-maintained
          distribution), not upstream iOfficeAI. Numeric Version continues the
          upstream series so IsNewer/probe stay monotonic; the informational
@@ -26,6 +26,10 @@
   <ItemGroup>
     <PackageReference Include="DocumentFormat.OpenXml" Version="3.4.1" />
     <PackageReference Include="System.CommandLine" Version="3.0.0-preview.2.26159.112" />
+    <!-- Ed25519 for the ledger signing face (REQ-063): net10 ships no managed
+         Ed25519; BouncyCastle is pure-managed so the trimmed single-file
+         publish and all 8 RIDs keep working unchanged. -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
   </ItemGroup>
 
   <ItemGroup>

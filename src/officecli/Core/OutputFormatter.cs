@@ -300,14 +300,15 @@ internal static class OutputFormatter
     private static JsonNode? BuildTypedCta(ErrorResult error)
     {
         if (string.IsNullOrWhiteSpace(error.Help)) return null;
-        var commands = new JsonArray
+        var command = new JsonObject
         {
-            new JsonObject
-            {
-                ["command"] = error.Help,
-                ["description"] = string.IsNullOrWhiteSpace(error.Suggestion) ? null : error.Suggestion,
-            },
+            ["command"] = error.Help,
+            ["description"] = string.IsNullOrWhiteSpace(error.Suggestion) ? null : error.Suggestion,
         };
+        // Cast to JsonNode before Add: the generic Add<T> pulls trim-hostile
+        // reflection metadata (IL2026) into the publish.
+        var commands = new JsonArray();
+        commands.Add((JsonNode?)command);
         return new JsonObject
         {
             ["description"] = "Suggested commands:",

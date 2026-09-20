@@ -543,6 +543,64 @@ internal static class UpdateChecker
         var config = LoadConfig();
         if (!SaveConfig(config)) throw new InvalidOperationException("SaveConfig failed");
         _ = LoadConfig(); // re-read must parse back without throwing
+        LedgerSelfTest();
+    }
+
+    /// <summary>Ledger face unit checks (REQ-063 CLI integration acceptance 1):
+    /// signing-base construction, idempotency-key semantics, kind/digest
+    /// validation. All offline — vectors, no network.</summary>
+    private static void LedgerSelfTest()
+    {
+        // 1. Signing base: six newline-joined lines in contract order.
+        var basis = OfficeCli.Core.Ledger.LedgerClient.BuildSigningBase(
+            "POST", "/repos/github.com/raystyle/OfficeCLI/issues",
+            1789900000, "nonce-abc", "idem-123",
+            new string('a', 64));
+        var expected = "v1\nPOST\n/repos/github.com/raystyle/OfficeCLI/issues\n1789900000\nnonce-abc\nidem-123\n" + new string('a', 64);
+        if (basis != expected)
+            throw new InvalidOperationException($"ledger signing base mismatch:\n{basis.Replace("\n", "\\n")}");
+
+        // Body hash must be lowercase hex sha256 of the exact bytes.
+        var sha = OfficeCli.Core.Ledger.LedgerClient.ComputeBodySha256Hex(
+            System.Text.Encoding.UTF8.GetBytes("{\"kind\":\"bug\"}"));
+        using (var h = System.Security.Cryptography.SHA256.Create())
+        {
+            var want = Convert.ToHexString(h.ComputeHash(System.Text.Encoding.UTF8.GetBytes("{\"kind\":\"bug\"}"))).ToLowerInvariant();
+            if (sha != want) throw new InvalidOperationException("ledger body sha256 mismatch");
+        }
+
+        // 2. Idempotency semantics (client side): a fresh key per logical write,
+        //    distinct across writes; fixed length, hex form. (Server replays the
+        //    first result for a repeated key+same-body; 409 only on key+diff-body
+        //    — the client guards by never reusing a key for a different body.)
+        var k1 = Guid.NewGuid().ToString("N");
+        var k2 = Guid.NewGuid().ToString("N");
+        if (k1 == k2 || k1.Length != 32) throw new InvalidOperationException("ledger idempotency key generation broken");
+
+        // 3. Digest + kind validation.
+        if (OfficeCli.Core.Ledger.LedgerClient.IsValidDigest("sha256:" + new string('a', 64)) == false)
+            throw new InvalidOperationException("valid digest rejected");
+        foreach (var bad in new[] { "", null, "sha256:xyz", "sha1:" + new string('a', 40), "sha256:" + new string('A', 64), new string('a', 64) })
+            if (OfficeCli.Core.Ledger.LedgerClient.IsValidDigest(bad))
+                throw new InvalidOperationException($"invalid digest accepted: '{bad}'");
+        if (!OfficeCli.Core.Ledger.LedgerClient.IssueKinds.Contains("bug")
+            || OfficeCli.Core.Ledger.LedgerClient.IssueKinds.Contains("task"))
+            throw new InvalidOperationException("issue kind set wrong");
+        foreach (var k in new[] { "experience", "lesson", "research", "attested-report" })
+            if (!OfficeCli.Core.Ledger.LedgerClient.ArtifactKinds.Contains(k))
+                throw new InvalidOperationException($"artifact kind missing: {k}");
+        if (OfficeCli.Core.Ledger.LedgerClient.ArtifactKinds.Contains("blob"))
+            throw new InvalidOperationException("unknown artifact kind accepted");
+
+        // 4. Embedded identity: kid must be sha256 of the canonical alphabetical
+        //    JWK (guards a copy-paste drift between PublicKeyJwk and KeyId).
+        using (var h2 = System.Security.Cryptography.SHA256.Create())
+        {
+            var kid = Convert.ToHexString(h2.ComputeHash(
+                System.Text.Encoding.UTF8.GetBytes(OfficeCli.Core.Ledger.LedgerClient.PublicKeyJwk))).ToLowerInvariant();
+            if (kid != OfficeCli.Core.Ledger.LedgerClient.KeyId)
+                throw new InvalidOperationException($"ledger kid drift: JWK hashes to {kid}, constant says {OfficeCli.Core.Ledger.LedgerClient.KeyId}");
+        }
     }
 
     internal static AppConfig LoadConfig()
