@@ -128,12 +128,44 @@ internal static class LedgerCli
         var (status, resp) = LedgerClient.GetAsync(Path($"issues/{n}")).GetAwaiter().GetResult();
         if (json) return Emit(status, resp, null);
         if (status != 200) return Emit(status, resp, null);
-        var root = JsonNode.Parse(resp)!;
-        Console.WriteLine($"issue #{Field(root, "n", "number", "id", "seq")} [{Field(root, "status") ?? "open"}] {Field(root, "kind") ?? "bug"}: {Field(root, "title")}");
-        if (Field(root, "acceptance") is { } acc) Console.WriteLine($"acceptance: {acc}");
-        if (root["events"] is JsonArray events)
+
+        // Detail face: {issue, projection:{status,kind,...}, timeline:[events]}.
+        // Title/acceptance live inside the issue_open event's payload string.
+        var root = JsonNode.Parse(resp) as JsonObject ?? [];
+        var projection = root["projection"] as JsonObject ?? [];
+        string? title = null, acceptance = null;
+        if (root["timeline"] is JsonArray timeline)
+            foreach (var e in timeline.OfType<JsonObject>())
+            {
+                if (Field(e, "type") != "issue_open" || e["payload"] is not JsonValue payload) continue;
+                try
+                {
+                    if (JsonNode.Parse(payload.ToString()) is JsonObject open)
+                    {
+                        title ??= Field(open, "title");
+                        acceptance ??= Field(open, "acceptance");
+                    }
+                }
+                catch { /* malformed payload string — leave as-is */ }
+            }
+        Console.WriteLine($"issue #{root["issue"]} [{Field(projection, "status") ?? "open"}] {Field(projection, "kind") ?? "bug"}: {title ?? "(no title)"}");
+        if (acceptance != null) Console.WriteLine($"acceptance: {acceptance}");
+        if (root["timeline"] is JsonArray events)
             foreach (var e in events.OfType<JsonObject>())
-                Console.WriteLine($"  {Field(e, "ts", "at", "time") ?? "",-20} {Field(e, "type") ?? "",-10} {e["digest"] ?? e["status"] ?? e["note"] ?? ""}");
+            {
+                var ts = Field(e, "created_at");
+                var when = ts != null && long.TryParse(ts, out var unix)
+                    ? DateTimeOffset.FromUnixTimeSeconds(unix).UtcDateTime.ToString("yyyy-MM-dd HH:mm")
+                    : ts ?? "";
+                var line = "";
+                try
+                {
+                    if (e["payload"] is JsonValue p && JsonNode.Parse(p.ToString()) is JsonObject po)
+                        line = Field(po, "digest") ?? Field(po, "status") ?? Field(po, "note") ?? "";
+                }
+                catch { /* keep the bare event line */ }
+                Console.WriteLine($"  {when,-16} seq {Field(e, "seq") ?? "",-4} {Field(e, "type") ?? "",-12} {line}");
+            }
         Console.WriteLine($"ledger: {LedgerClient.ApiBase}/repos/{LedgerClient.RepoId}/issues/{n}");
         return 0;
     }

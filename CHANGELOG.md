@@ -4,6 +4,14 @@
  [GitHub Releases](https://github.com/raystyle/OfficeCLI/releases) (auto-generated
  notes per tag).
 
+## 1.0.158
+
+- `issue show` human projection fixed against the live detail face
+  (`projection` + `timeline` with the title/acceptance inside the
+  issue_open event payload; `--json` was already complete). Real-fire
+  verified: issue #1 + experience artifact registered on
+  ledger.ohmygh.com (kid fcb406f8…).
+
 ## 1.0.157
 
 - **issue face switched to the repo ledger** (REQ-063): `officecli issue
