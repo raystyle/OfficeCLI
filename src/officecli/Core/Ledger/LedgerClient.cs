@@ -137,13 +137,17 @@ internal static class LedgerClient
     }
 
     /// <summary>Signed POST; returns (status, body). The server's error body is
-    /// surfaced verbatim so schema hints from real-fire runs reach the caller.</summary>
+    /// surfaced verbatim so schema hints from real-fire runs reach the caller.
+    /// Idempotency: a fresh key per logical write; pass an explicit
+    /// <paramref name="idempotencyKey"/> ONLY for content-derived replays
+    /// (e.g. the close-chain result event, where a retry must replay rather
+    /// than append) — never reuse a key across different bodies.</summary>
     internal static async Task<(int Status, string Body)> PostAsync(
-        string pathname, JsonObject body, string? reuseIdempotencyKey = null)
+        string pathname, JsonObject body, string? idempotencyKey = null)
     {
         var payload = body.ToJsonString();
         var bytes = Encoding.UTF8.GetBytes(payload);
-        var idem = reuseIdempotencyKey ?? Guid.NewGuid().ToString("N");
+        var idem = idempotencyKey ?? Guid.NewGuid().ToString("N");
         var ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var nonce = Guid.NewGuid().ToString("N")[..16];
         var baseString = BuildSigningBase("POST", pathname, ts, nonce, idem,

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Reflection;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using OfficeCli.Core.Ledger;
 
@@ -61,19 +62,37 @@ internal static class LedgerCli
         catch (InvalidOperationException ex) // bad input / missing key
         {
             Console.Error.WriteLine("error: " + ex.Message);
-            return 1;
+            return 2; // usage-class per the 0/1/2 contract (G11)
+        }
+        catch (HttpRequestException ex) // ledger unreachable (F1: old face
+        // caught these; the new one crashed rc 134)
+        {
+            Console.Error.WriteLine($"ledger unreachable: {ex.Message}");
+            Console.Error.WriteLine($"(check connectivity; base is {LedgerClient.ApiBase}, override via OFFICECLI_LEDGER_API)");
+            return 2; // system error
+        }
+        catch (TaskCanceledException) // HttpClient timeout — same class as unreachable
+        {
+            Console.Error.WriteLine($"ledger timed out (base {LedgerClient.ApiBase}).");
+            return 2;
+        }
+        catch (JsonException ex) // unparseable server response
+        {
+            Console.Error.WriteLine($"ledger response not valid JSON: {ex.Message}");
+            return 2;
         }
         if (issue) UsageIssue(); else UsageArtifact();
         Console.Error.WriteLine($"error: unknown subcommand '{cmd}'.");
-        return 1;
+        return 2;
     }
 
     private static int IssueNew(string[] a)
     {
-        var title = Positional(a);
         string? kind = null, acceptance = null;
-        ForEachFlag(a, ("--kind", v => kind = v), ("--acceptance", v => acceptance = v),
+        var (pos, _) = ParseArgs(a,
+            ("--kind", v => kind = v), ("--acceptance", v => acceptance = v),
             ("--body", v => acceptance = acceptance == null ? v : acceptance + "\n" + v));
+        var title = pos.FirstOrDefault();
         if (string.IsNullOrWhiteSpace(title))
             throw new InvalidOperationException("issue new needs a title: officecli issue new \"<title>\" --kind bug|improvement --acceptance \"<criteria>\"");
         kind ??= "bug";
@@ -84,7 +103,7 @@ internal static class LedgerCli
 
         var body = new JsonObject { ["title"] = title, ["kind"] = kind, ["acceptance"] = acceptance };
         var (status, resp) = LedgerClient.PostAsync(Path("issues"), body).GetAwaiter().GetResult();
-        return Emit(status, resp, $"Issue opened on {LedgerClient.ApiBase} (repo {LedgerClient.RepoId}).");
+        return Emit(status, resp, $"Issue opened on {LedgerClient.ApiBase} (repo {LedgerClient.RepoId}).", json: a.Contains("--json"));
     }
 
     private static int IssueList(string[] a)
@@ -92,20 +111,19 @@ internal static class LedgerCli
         int limit = 100;
         string? before = null;
         bool json = a.Contains("--json");
-        ForEachFlag(a,
+        ParseArgs(a,
             ("--limit", v => { if (!int.TryParse(v, out limit) || limit is < 1 or > 100) throw new InvalidOperationException("--limit must be 1..100 (family form caps a page at 100)."); }),
             ("--before", v => before = v));
         var query = $"?limit={limit}&more=1" + (before != null ? $"&before={Uri.EscapeDataString(before)}" : "");
         var (status, resp) = LedgerClient.GetAsync(Path("issues") + query).GetAwaiter().GetResult();
-        if (json) return Emit(status, resp, null);
-        if (status != 200) return Emit(status, resp, null);
+        if (json || status != 200) return Emit(status, resp, null, json);
 
         var root = JsonNode.Parse(resp);
         var items = Items(root, "issues");
         Console.WriteLine($"Issues for {LedgerClient.RepoId} (count {items.Count}{(HasMore(root) ? ", more available" : ", saturated")}):");
         foreach (var item in items)
         {
-            var n = Field(item, "n", "number", "id", "seq");
+            var n = Field(item, "issue_n", "n", "number", "id", "seq");
             var title = Field(item, "title") ?? "";
             var kind = Field(item, "kind") ?? "bug";
             var st = Field(item, "status") ?? "open";
@@ -113,20 +131,22 @@ internal static class LedgerCli
         }
         if (HasMore(root) && items.Count > 0)
         {
-            var last = Field(items[^1], "n", "number", "id", "seq");
-            Console.WriteLine($"more: officecli issue list --before {last}");
+            var last = Field(items[^1], "issue_n", "n", "number", "id", "seq");
+            if (!string.IsNullOrEmpty(last))
+                Console.WriteLine($"more: officecli issue list --before {last}");
         }
         return 0;
     }
 
     private static int IssueShow(string[] a)
     {
-        var n = Positional(a);
+        var (pos, _) = ParseArgs(a, ("--json", null));
+        var n = pos.FirstOrDefault();
         if (string.IsNullOrWhiteSpace(n) || !int.TryParse(n, out _))
             throw new InvalidOperationException("issue show needs an issue number: officecli issue show <n>");
         bool json = a.Contains("--json");
         var (status, resp) = LedgerClient.GetAsync(Path($"issues/{n}")).GetAwaiter().GetResult();
-        if (json) return Emit(status, resp, null);
+        if (json) return Emit(status, resp, null, json);
         if (status != 200) return Emit(status, resp, null);
 
         // Detail face: {issue, projection:{status,kind,...}, timeline:[events]}.
@@ -172,9 +192,9 @@ internal static class LedgerCli
 
     private static int IssueClose(string[] a)
     {
-        var n = Positional(a);
         string? digest = null, note = null;
-        ForEachFlag(a, ("--digest", v => digest = v), ("--note", v => note = v));
+        var (pos, _) = ParseArgs(a, ("--digest", v => digest = v), ("--note", v => note = v), ("--json", null));
+        var n = pos.FirstOrDefault();
         if (string.IsNullOrWhiteSpace(n) || !int.TryParse(n, out _))
             throw new InvalidOperationException("issue close needs an issue number: officecli issue close <n> --digest sha256:<64hex>");
         if (!LedgerClient.IsValidDigest(digest))
@@ -182,12 +202,30 @@ internal static class LedgerCli
 
         var result = new JsonObject { ["type"] = "result", ["digest"] = digest };
         if (note != null) result["note"] = note;
-        var (s1, r1) = LedgerClient.PostAsync(Path($"issues/{n}/events"), result).GetAwaiter().GetResult();
-        if (s1 is < 200 or >= 300) return Emit(s1, r1, null);
+        // G4: the result event uses an idempotency key DERIVED from (issue,
+        // digest) — re-running a half-finished close replays the same event
+        // instead of appending a duplicate to the append-only ledger.
+        var (s1, r1) = LedgerClient.PostAsync(Path($"issues/{n}/events"), result,
+            idempotencyKey: ResultEventKey(n, digest!)).GetAwaiter().GetResult();
+        if (s1 is < 200 or >= 300) return Emit(s1, r1, null, json: a.Contains("--json"));
 
-        var done = new JsonObject { ["type"] = "status", ["status"] = "done" };
+        var done = new JsonObject { ["type"] = "status", ["to"] = "done" };
         var (s2, r2) = LedgerClient.PostAsync(Path($"issues/{n}/events"), done).GetAwaiter().GetResult();
-        return Emit(s2, r2, $"Issue #{n}: result recorded, status done.");
+        if (s2 is < 200 or >= 300)
+        {
+            Console.Error.WriteLine($"half-state: the result event for issue #{n} IS recorded (digest {digest}), but the status=done event failed — re-run the same close command to finish.");
+            return Emit(s2, r2, null, json: a.Contains("--json"));
+        }
+        return Emit(s2, r2, $"Issue #{n}: result recorded, status done.", json: a.Contains("--json"));
+    }
+
+    /// <summary>Stable idempotency key for the close-chain result event (G4):
+    /// same issue + same digest replays the same event on retry.</summary>
+    private static string ResultEventKey(string n, string digest)
+    {
+        var seed = $"result:{LedgerClient.RepoId}:{n}:{digest}";
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(seed)))[..32].ToLowerInvariant();
     }
 
     // ==================== artifact ====================
@@ -196,7 +234,7 @@ internal static class LedgerCli
     {
         string? name = null, kind = null, digest = null, version = null, range = null, outcome = null, note = null;
         List<string>? deps = null;
-        ForEachFlag(a,
+        var (_, _) = ParseArgs(a,
             ("--name", v => name = v),
             ("--kind", v => kind = v),
             ("--digest", v => digest = v),
@@ -205,7 +243,8 @@ internal static class LedgerCli
             ("--git_range", v => range = v),
             ("--outcome", v => outcome = v),
             ("--note", v => note = v),
-            ("--deps", v => deps = v.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList()));
+            ("--deps", v => deps = v.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList()),
+            ("--json", null));
         if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(kind) || !LedgerClient.IsValidDigest(digest))
             throw new InvalidOperationException(
                 "artifact publish needs --name, --kind, --digest sha256:<64hex> (hash of the content/record — the ledger stores metadata, not bytes).");
@@ -227,14 +266,14 @@ internal static class LedgerCli
             body["deps"] = arr;
         }
         var (status, resp) = LedgerClient.PostAsync(Path("artifacts"), body).GetAwaiter().GetResult();
-        return Emit(status, resp, "Artifact registered in the shared library.");
+        return Emit(status, resp, "Artifact registered in the shared library.", json: a.Contains("--json"));
     }
 
     private static int ArtifactAttest(string[] a, string? fixedType)
     {
-        var id = Positional(a);
         string? type = fixedType, note = null;
-        ForEachFlag(a, ("--type", v => type = v), ("--note", v => note = v));
+        var (pos, _) = ParseArgs(a, ("--type", v => type = v), ("--note", v => note = v), ("--json", null));
+        var id = pos.FirstOrDefault();
         if (string.IsNullOrWhiteSpace(id))
             throw new InvalidOperationException($"artifact {(fixedType ?? "attest")} needs an artifact id.");
         if (type == null || !LedgerClient.AttestationTypes.Contains(type))
@@ -243,7 +282,7 @@ internal static class LedgerCli
         var body = new JsonObject { ["type"] = type };
         if (note != null) body["note"] = note;
         var (status, resp) = LedgerClient.PostAsync(Path($"artifacts/{id}/attestations"), body).GetAwaiter().GetResult();
-        return Emit(status, resp, $"Attestation '{type}' recorded for artifact {id}.");
+        return Emit(status, resp, $"Attestation '{type}' recorded for artifact {id}.", json: a.Contains("--json"));
     }
 
     private static int ArtifactList(string[] a)
@@ -251,21 +290,20 @@ internal static class LedgerCli
         bool current = a.Contains("--current");
         string? env = null;
         bool json = a.Contains("--json");
-        ForEachFlag(a, ("--env", v => env = v));
+        ParseArgs(a, ("--env", v => env = v), ("--json", null), ("--current", null));
         if (env is not null and not ("dev" or "prod"))
             throw new InvalidOperationException("--env must be dev or prod.");
         var query = "?" + (current ? "current=1" : "current=0") + (env != null ? $"&env={env}" : "");
         var (status, resp) = LedgerClient.GetAsync(Path("artifacts") + query).GetAwaiter().GetResult();
-        if (json) return Emit(status, resp, null);
-        if (status != 200) return Emit(status, resp, null);
+        if (json || status != 200) return Emit(status, resp, null, json);
 
         var root = JsonNode.Parse(resp);
         var items = Items(root, "artifacts");
         Console.WriteLine($"Artifacts for {LedgerClient.RepoId} (count {items.Count}):");
         foreach (var item in items)
         {
-            var id = Field(item, "id", "n", "seq");
-            Console.WriteLine($"  #{id,-5} [{Field(item, "kind") ?? "",-12}] {Field(item, "name")}");
+            var id = Field(item, "artifact_id", "id", "n", "seq");
+            Console.WriteLine($"  #{id,-38} [{Field(item, "kind") ?? "",-12}] {Field(item, "name")}");
             var envs = item["envs"] ?? item["attestations"];
             if (envs != null) Console.WriteLine($"         {envs.ToJsonString()}");
         }
@@ -278,38 +316,56 @@ internal static class LedgerCli
 
     /// <summary>Emit by status: 2xx prints the server projection (or the
     /// success line); anything else is an error on stderr with the server's
-    /// body verbatim (schema hints survive). JSON mode wraps the server body
-    /// in the standard CLI envelope.</summary>
-    private static int Emit(int status, string resp, string? humanLine)
+    /// body verbatim (schema hints survive). JSON mode (F6) wraps the server
+    /// body in the standard CLI envelope and suppresses the human line — the
+    /// machine face must be parseable JSON.</summary>
+    private static int Emit(int status, string resp, string? humanLine, bool json = false)
     {
         if (status is >= 200 and < 300)
         {
+            if (json)
+            {
+                Console.WriteLine(OutputFormatter.WrapEnvelopeText(
+                    string.IsNullOrWhiteSpace(resp) ? (humanLine ?? "ok") : resp.Trim()));
+                return 0;
+            }
             if (humanLine != null) Console.WriteLine(humanLine);
             if (!string.IsNullOrWhiteSpace(resp))
                 Console.WriteLine(resp.Trim());
             return 0;
         }
         Console.Error.WriteLine($"ledger {status}: {resp.Trim()}");
+        if (json && !string.IsNullOrWhiteSpace(resp))
+            Console.WriteLine(OutputFormatter.WrapEnvelopeText(resp.Trim(), success: false));
         if (status == 401) Console.Error.WriteLine("(signature/key: check the local Ed25519 key and that the CLI's embedded public key is registered for this repo on ledger.ohmygh.com)");
         if (status == 429) Console.Error.WriteLine("(per-key quota is 50 writes / UTC day; idempotent replays do not consume it)");
         return 1;
     }
 
-    private static string? Positional(string[] a) =>
-        a.FirstOrDefault(x => !x.StartsWith('-'));
-
-    private static void ForEachFlag(string[] a, params (string Name, Action<string> Set)[] flags)
+    /// <summary>Single-pass args parser (F4): flag tokens consume their value
+    /// token, everything else is positional — flag VALUES can never be
+    /// mistaken for positionals. A null setter marks a boolean flag (no
+    /// value); unknown dash-tokens fall through as positionals and surface
+    /// later as unknown-subcommand/parameter errors.</summary>
+    private static (List<string> Positionals, int Consumed) ParseArgs(
+        string[] a, params (string Name, Action<string>? Set)[] flags)
     {
+        var positionals = new List<string>();
         for (int i = 0; i < a.Length; i++)
         {
+            var matched = false;
             foreach (var (name, set) in flags)
             {
                 if (!string.Equals(a[i], name, StringComparison.Ordinal)) continue;
+                matched = true;
+                if (set == null) break; // boolean flag — no value token
                 if (i + 1 >= a.Length) throw new InvalidOperationException($"{name} needs a value.");
                 set(a[++i]);
                 break;
             }
+            if (!matched) positionals.Add(a[i]);
         }
+        return (positionals, a.Length);
     }
 
     private static List<JsonObject> Items(JsonNode? root, string arrayKey)

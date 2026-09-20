@@ -108,14 +108,17 @@ if (args.Length >= 1 && args[0] == "--llms")
 }
 
 // cli-docs 输出协议旗标族 (issue #14 wave a): --schema renders the command's
-// JSON Schema from the live tree (canonical position: right after the command
-// name); --format/--filter-output/--full-output are extracted here and resolved
-// by a stdout rewriter, so no command wiring changes (pure additive wave).
+// JSON Schema from the live tree; --format/--filter-output/--full-output are
+// extracted here and resolved by a stdout rewriter, so no command wiring
+// changes (pure additive wave). G6: --schema is honored at any position
+// (exact token, value-position guarded) and unknown command names fail rc 2
+// in SchemaFace instead of silently falling back to the root schema.
 if (args.Length >= 1 && args[0] == "--schema")
 {
     return OfficeCli.Help.SchemaFace.Run(null);
 }
-if (args.Length == 2 && args[1] == "--schema")
+if (args.Length > 1 && args[0] != "help" && Array.IndexOf(args, "--schema") > 0
+    && !TokenIsOptionValue(args, Array.IndexOf(args, "--schema")))
 {
     return OfficeCli.Help.SchemaFace.Run(args[0]);
 }
@@ -191,15 +194,16 @@ if (args.Length > 0)
 
 // Help flags at ANY later position (`officecli get f.docx -h`) route through
 // the same `help` face so every help request renders from one renderer
-// (cli-docs 帮助面). Exact flag tokens only — a `--help` appearing where an
-// option VALUE was expected (`--prop --help`) already showed help under SCL
-// (the help option wins during parse), so the rewrite changes the rendering
-// path, not the outcome. Positionals after the command name are dropped:
-// they are operands of the command, not of its help.
-if (args.Length > 2 && args[0] != "help"
-    && Array.FindIndex(args, a => a is "-h" or "--help" or "-?") > 1)
+// (cli-docs 帮助面). Exact flag tokens only, VALUE-POSITION GUARDED (F5): a
+// token right after a value-taking option is that option's value — SCL kept
+// it literal there (set --find --help really searched for "--help"), so the
+// rewrite must not hijack it into a help dump (silent no-op edit). Positionals
+// after the command name are dropped: they are operands, not help operands.
+if (args.Length > 2 && args[0] != "help")
 {
-    args = new[] { "help", args[0] };
+    var helpIdx = Array.FindIndex(args, a => a is "-h" or "--help" or "-?");
+    if (helpIdx > 1 && !TokenIsOptionValue(args, helpIdx))
+        args = new[] { "help", args[0] };
 }
 
 // MCP commands: officecli mcp [target]
@@ -391,3 +395,20 @@ if (parseResult.Errors.Count > 0)
     return 2;
 }
 return parseResult.Invoke();
+
+// F5/G6 shared guard: is args[idx] sitting in a VALUE slot — i.e. preceded by
+// a value-taking option of the args[0] command (live-tree lookup)? Help and
+// schema flags in value slots stay literal option values.
+static bool TokenIsOptionValue(string[] a, int idx)
+{
+    if (idx <= 1) return false;
+    var prev = a[idx - 1];
+    if (!prev.StartsWith('-')) return false;
+    var root = OfficeCli.CommandBuilder.BuildRootCommand();
+    var cmd = root.Subcommands.FirstOrDefault(c =>
+        string.Equals(c.Name, a[0], StringComparison.OrdinalIgnoreCase));
+    if (cmd == null) return false; // early-dispatch names: no value options known
+    var optName = prev.TrimStart('-');
+    return cmd.Options.Any(o => o.ValueType != typeof(bool) && o.ValueType != typeof(void)
+        && o.Name.TrimStart('-') == optName);
+}

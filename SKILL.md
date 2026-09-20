@@ -91,15 +91,15 @@ officecli set data.xlsx /Sheet1/A2 --prop value="Alice"
 
 ## Defect reporting (agent discipline)
 
-Hit a defect mid-session — wrong output, crash, schema/doc mismatch — file it one-key; version/platform/host context is attached automatically (issues.ohmygh.com, REQ-057). Do NOT hand-compose bug reports.
+Hit a defect mid-session - wrong output, crash, schema/doc mismatch - open it on the repo ledger one-key (ledger.ohmygh.com, REQ-063). Do NOT hand-compose bug reports. Writes are Ed25519-signed by the CLI itself (key: ~/.officecli/ledger keyfile or OFFICECLI_LEDGER_KEY); the body is exactly {title, kind, acceptance} - put the repro INSIDE the acceptance line.
 
 ```bash
-officecli issue new "<title>" --body "<evidence: command, input, expected vs actual>"
-officecli issue list                    # read face (default tool=officecli)
-officecli issue show <id>               # full detail
+officecli issue new "<title>" --kind bug --acceptance "<repro: command, input, expected vs actual>"
+officecli issue list                    # family pagination (limit 100, before cursor)
+officecli issue show <n>                # projection + timeline
+officecli issue close <n> --digest sha256:<64hex>   # result cites a registered digest
+officecli artifact publish --name <n> --kind experience --outcome success --digest sha256:<64hex> ...
 ```
-
-Include the failing command and a minimal repro in `--body`; keep it under 20000 chars.
 
 ---
 

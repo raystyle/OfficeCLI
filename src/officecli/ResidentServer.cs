@@ -986,7 +986,7 @@ public class ResidentServer : IDisposable
         {
             var node = System.Text.Json.Nodes.JsonNode.Parse(envelopeJson);
             if (node is not System.Text.Json.Nodes.JsonObject obj) return envelopeJson;
-            if (forceFailure) obj["success"] = false;
+            if (forceFailure) { obj["success"] = false; obj["ok"] = false; } // G2: keep the mirror in step
             if (extraWarnings is { Count: > 0 })
             {
                 if (obj["warnings"] is System.Text.Json.Nodes.JsonArray existing)

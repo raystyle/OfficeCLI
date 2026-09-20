@@ -130,6 +130,9 @@ internal static class HelpFace
     private static readonly (string Name, string Desc, string Default)[] EnvVars =
     {
         ("OFFICECLI_ENVELOPE", "machine envelope shape: compat (ok + success legacy) or strict (ok-only; errors as string + stderr single-line)", "compat"),
+        ("OFFICECLI_LEDGER_API", "ledger base URL override for issue/artifact (tests/canary)", "https://ledger.ohmygh.com"),
+        ("OFFICECLI_LEDGER_KEY", "Ed25519 seed for ledger writes (hex or base64, 32 bytes); explicit-but-invalid is an error, never a silent fallback", "(unset)"),
+        ("OFFICECLI_LEDGER_KEY_FILE", "ledger private-key file (default ~/.officecli/ledger/officecli-ed25519.key); the seed never enters argv", "(keyfile)"),
         ("OFFICECLI_RESIDENT_FLUSH", "resident flush policy: each|auto|<seconds>|off", "auto"),
         ("OFFICECLI_RESIDENT_IDLE_SECONDS", "resident idle exit in seconds", "7200"),
         ("OFFICECLI_NO_AUTO_RESIDENT", "set 1 to forbid auto-starting a resident (explicit open still works)", "unset"),

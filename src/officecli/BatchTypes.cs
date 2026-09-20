@@ -256,6 +256,7 @@ internal class BatchResultConverter : JsonConverter<BatchResult>
         writer.WriteStartObject();
         writer.WriteNumber("index", value.Index);
         writer.WriteBoolean("success", value.Success);
+        writer.WriteBoolean("ok", value.Success); // G2: ok mirrors success at the item level too
         if (value.Output != null)
         {
             // If Output is valid JSON (object or array), write it as raw JSON to avoid double-encoding

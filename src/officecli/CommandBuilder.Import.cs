@@ -465,6 +465,7 @@ static partial class CommandBuilder
                 var jsonObj = new System.Text.Json.Nodes.JsonObject
                 {
                     ["success"] = true,
+                    ["ok"] = true, // G2: ok mirror
                     ["data"] = mergeData,
                     ["message"] = message,
                 };

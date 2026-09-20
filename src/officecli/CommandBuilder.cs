@@ -1421,6 +1421,7 @@ static partial class CommandBuilder
                         slimWriter.WriteStartObject();
                         slimWriter.WriteNumber("index", r.Index);
                         slimWriter.WriteBoolean("success", r.Success);
+                        slimWriter.WriteBoolean("ok", r.Success); // G2: item-level ok mirror
                         if (r.Error != null)
                         {
                             slimWriter.WriteString("error", r.Error);

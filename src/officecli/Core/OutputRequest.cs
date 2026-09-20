@@ -56,14 +56,19 @@ internal sealed class OutputRequest
         {
             var a = args[i];
             if (a == "--full-output") { full = true; continue; }
-            if (a == "--format" && i + 1 < args.Length)
+            if (a == "--format" || a == "--filter-output")
             {
-                format = args[++i];
-                continue;
-            }
-            if (a == "--filter-output" && i + 1 < args.Length)
-            {
-                filter = args[++i];
+                // G7: a value-less family flag would fall through to SCL's
+                // confusing "Unrecognized command or argument" — fail with the
+                // real cause instead.
+                if (i + 1 >= args.Length)
+                {
+                    Console.Error.WriteLine($"error: {a} needs a value" +
+                        (a == "--format" ? " (toon|json|yaml|md)." : " (envelope-rooted key paths, comma-separated)."));
+                    Environment.Exit(2);
+                }
+                if (a == "--format") format = args[++i];
+                else filter = args[++i];
                 continue;
             }
             keep.Add(a);
@@ -137,7 +142,8 @@ internal sealed class OutputRequest
 
         public override void Write(char[] buffer, int index, int count)
         {
-            if (count > 0) foreach (var c in buffer[index..(index + count)]) { if (!_decided) Decide(c); }
+            // G8: only the FIRST byte decides the face — no slice allocation.
+            if (count > 0 && !_decided) Decide(buffer[index]);
             if (_machine) { _buffer!.Append(buffer, index, count); return; }
             _inner.Write(buffer, index, count);
         }
@@ -155,29 +161,35 @@ internal sealed class OutputRequest
             if (!char.IsWhiteSpace(c) && c != '{') _machine = false; // human/stream face: pass through
         }
 
-        /// <summary>Transform and emit the buffered machine envelope. Called once at
-        /// process end by Program; also wired into Flush for safety.</summary>
+        /// <summary>Transform and emit the buffered machine envelope. Called from
+        /// the ProcessExit hook on every exit path (early dispatches return
+        /// before the main parse). Idempotent: a second call is a no-op.</summary>
         public void FlushFinal()
         {
             if (!_machine || _buffer == null) { Flush(); return; }
             _machine = false;
             var text = _buffer.ToString();
             _buffer.Clear();
-            Console.SetOut(_inner); // restore before writing so nested writes can't loop
-            if (text.Trim().Length == 0) { Flush(); return; }
-            try
+            // G9: ProcessExit can race a server thread still writing — the
+            // swap+emit block is atomic on the inner writer.
+            lock (_inner)
             {
-                var node = JsonNode.Parse(text.Trim());
-                if (node is JsonObject envelope)
-                    Console.Out.Write(Transform(envelope));
-                else
-                    Console.Out.Write(text); // not an envelope object after all
+                Console.SetOut(_inner); // restore before writing so nested writes can't loop
+                if (text.Trim().Length == 0) { Flush(); return; }
+                try
+                {
+                    var node = JsonNode.Parse(text.Trim());
+                    if (node is JsonObject envelope)
+                        Console.Out.Write(Transform(envelope));
+                    else
+                        Console.Out.Write(text); // not an envelope object after all
+                }
+                catch (JsonException)
+                {
+                    Console.Out.Write(text); // not JSON — hand through untouched
+                }
+                Flush();
             }
-            catch (JsonException)
-            {
-                Console.Out.Write(text); // not JSON — hand through untouched
-            }
-            Flush();
         }
 
         private string Transform(JsonObject envelope)
@@ -191,7 +203,14 @@ internal sealed class OutputRequest
                 envelope["meta"] = meta;
             }
             if (_request.FilterKeys.Length > 0)
-                envelope["data"] = FilterPaths(envelope, _request.FilterKeys);
+            {
+                var filtered = FilterPaths(envelope, _request.FilterKeys);
+                // G7: a fully-empty pick means every key missed — say so on
+                // stderr instead of an ambiguous silent data:{}.
+                if (filtered is JsonObject picks && picks.Count == 0)
+                    Console.Error.WriteLine("filter: no keys matched (paths are envelope-rooted, e.g. data.results[0].path).");
+                envelope["data"] = filtered;
+            }
 
             return _request.Format switch
             {
@@ -204,20 +223,37 @@ internal sealed class OutputRequest
         /// <summary>Strict-shape normalization (wave b preview): success/message
         /// drop (ok is the verdict); the structured error object folds into a
         /// human-readable `error` string on stdout plus a single-line
-        /// {code, message, cta?} JSON on stderr (cli-docs 错误分道). The stderr
-        /// line is hand-composed — no serializer — so the trimmed publish
-        /// cannot lose it to reflection stripping.</summary>
+        /// {code, message, cta?} JSON on stderr (cli-docs 错误分道). F2: a
+        /// message-ONLY failure envelope (WrapEnvelopeError — no error object)
+        /// also folds into the error slot, so the verdict never disappears on
+        /// either channel. The stderr line is hand-composed — no serializer —
+        /// so the trimmed publish cannot lose it to reflection stripping.</summary>
         private static void NormalizeStrict(JsonObject envelope)
         {
+            var messageOnly = envelope["message"]?.ToString();
             envelope.Remove("success");
             envelope.Remove("message");
-            if (envelope["error"] is not JsonObject err) return;
 
-            var message = err["error"]?.ToString() ?? "";
-            var code = err["code"]?.ToString() ?? "";
-            var cta = envelope["meta"]?["cta"] as JsonObject;
-            envelope["error"] = message;
+            if (envelope["error"] is JsonObject err)
+            {
+                var message = err["error"]?.ToString() ?? "";
+                var code = err["code"]?.ToString() ?? "";
+                var cta = envelope["meta"]?["cta"] as JsonObject;
+                envelope["error"] = message;
+                WriteStderrErrorLine(code, message, cta);
+                return;
+            }
 
+            var failed = envelope["ok"] is JsonValue okv && okv.GetValue<bool>() == false;
+            if (failed && !string.IsNullOrWhiteSpace(messageOnly))
+            {
+                envelope["error"] = messageOnly;
+                WriteStderrErrorLine("", messageOnly, null);
+            }
+        }
+
+        private static void WriteStderrErrorLine(string code, string message, JsonObject? cta)
+        {
             var line = new StringBuilder("{\"code\":").Append(QuoteJson(code))
                 .Append(",\"message\":").Append(QuoteJson(message));
             if (cta?["description"] is { } desc)
@@ -302,17 +338,22 @@ internal sealed class OutputRequest
             {
                 case JsonObject obj:
                     if (!root && !listItem) sb.AppendLine();
-                    // A list-item object puts its first key on the dash line; its
-                    // continuation keys align two spaces in (indent+2), matching
-                    // the nested-object case below.
+                    // A list-item object puts its first key on the dash line
+                    // ("pad- "), continuation keys at indent+2. F3: a NESTED
+                    // container under a key must be strictly deeper than its
+                    // key's column — dash-line keys sit at indent+2 (children
+                    // at indent+2), continuation keys at indent+2 (children at
+                    // indent+4); using indent+2 for both produced siblings at
+                    // the key's own column and flattened the tree.
                     var first = listItem;
                     var contPad = listItem ? new string(' ', indent + 2) : pad;
                     foreach (var (key, value) in obj)
                     {
+                        var valueIndent = first ? indent + 2 : indent + 4;
                         if (first) { sb.Append(pad).Append("- "); first = false; }
                         else sb.Append(contPad);
                         sb.Append(YamlKey(key)).Append(':');
-                        WriteYamlValue(sb, value, indent + 2);
+                        WriteYamlValue(sb, value, valueIndent);
                     }
                     break;
                 case JsonArray arr:
@@ -343,6 +384,12 @@ internal sealed class OutputRequest
                 case null:
                     sb.AppendLine(" null");
                     break;
+                case JsonObject nestedObj when nestedObj.Count == 0:
+                    sb.AppendLine(" {}"); // F3: empty collections must not read as null
+                    break;
+                case JsonArray nestedArr when nestedArr.Count == 0:
+                    sb.AppendLine(" []");
+                    break;
                 case JsonObject:
                 case JsonArray:
                     WriteYaml(sb, value, indent); // emits its own leading newline
@@ -370,6 +417,20 @@ internal sealed class OutputRequest
         private static string YamlString(string s)
         {
             if (s.Length == 0 || s.IndexOfAny("\n\r\t:#{}[],&*?|<>=!%@`\"'".ToCharArray()) >= 0 || char.IsWhiteSpace(s[0]))
+                return QuoteJson(s);
+            // F3: quote strings a YAML loader would coerce to non-strings —
+            // numbers (incl. leading-zero octal-looking ids like "00100000"),
+            // floats, bools and nulls (YAML 1.1 widens yes/no/on/off too).
+            if (System.Text.RegularExpressions.Regex.IsMatch(s,
+                    @"^(?:[-+]?(\d[\d_]*|0[xXoObB][0-9a-fA-F_]+)|[-+]?(\d*\.\d+|\d+\.\d*)([eE][-+]?\d+)?|[-+]?\d+[eE][-+]?\d+)$")
+                || s.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || s.Equals("false", StringComparison.OrdinalIgnoreCase)
+                || s.Equals("yes", StringComparison.OrdinalIgnoreCase)
+                || s.Equals("no", StringComparison.OrdinalIgnoreCase)
+                || s.Equals("on", StringComparison.OrdinalIgnoreCase)
+                || s.Equals("off", StringComparison.OrdinalIgnoreCase)
+                || s.Equals("null", StringComparison.OrdinalIgnoreCase)
+                || s == "~")
                 return QuoteJson(s);
             return s;
         }
@@ -418,7 +479,7 @@ internal sealed class OutputRequest
             return sb.ToString();
         }
 
-        private static void WriteMdNode(StringBuilder sb, JsonNode node, int depth)
+        private static void WriteMdNode(StringBuilder sb, JsonNode? node, int depth)
         {
             var pad = new string(' ', depth * 2);
             switch (node)
@@ -463,7 +524,18 @@ internal sealed class OutputRequest
             }
         }
 
-        private static string MdCell(JsonNode? cell) =>
-            (cell?.ToString() ?? "null").Replace("|", "\\|").Replace("\n", " ");
+        /// <summary>Table cell: nested objects/arrays render as COMPACT JSON
+        /// (G10 — the default node ToString indents and \u002B-escapes), pipes
+        /// escaped, newlines flattened.</summary>
+        private static string MdCell(JsonNode? cell)
+        {
+            var text = cell switch
+            {
+                JsonObject or JsonArray => cell.ToJsonString(OutputFormatter.PublicJsonOptions),
+                null => "null",
+                _ => cell.ToString(),
+            };
+            return text.Replace("|", "\\|").Replace("\n", " ");
+        }
     }
 }

@@ -2878,6 +2878,7 @@ internal class WatchServer : IDisposable
             {
                 w.WriteStartObject();
                 w.WriteBoolean("success", success);
+                w.WriteBoolean("ok", success); // G2: ok mirror
                 w.WriteString(success ? "message" : "error", content);
                 w.WriteEndObject();
             }

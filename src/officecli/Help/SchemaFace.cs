@@ -29,8 +29,9 @@ internal static class SchemaFace
         if (commandName != null)
         {
             cmd = root.Subcommands.FirstOrDefault(c =>
-                       string.Equals(c.Name, commandName, StringComparison.OrdinalIgnoreCase) && !c.Hidden)
-                   ?? root;
+                      string.Equals(c.Name, commandName, StringComparison.OrdinalIgnoreCase) && !c.Hidden)
+                  ?? throw new ArgumentException(
+                      $"unknown command '{commandName}' -- no schema face for it. Root schema: officecli --schema");
         }
 
         // Root description begins "officecli: …" — strip the self-naming prefix
