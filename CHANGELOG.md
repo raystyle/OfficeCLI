@@ -4,10 +4,26 @@
  [GitHub Releases](https://github.com/raystyle/OfficeCLI/releases) (auto-generated
  notes per tag).
 
+## 1.0.160 (权限收口, 总台修正令 2026-09-20)
+
+- CLI ledger surface is ADDITIVE-ONLY now: `issue close` (result + status
+  chain) and `artifact promote` are removed; `artifact attest` narrows to
+  attest_dev | attest_prod | verification_failed (promote/demote/supersede
+  dropped). Closures, deletions and status changes run exclusively through
+  the omc workbench (`omc ledger issue status <repo> <n> <to>` /
+  `omc ledger issue delete`), herdr-delegated from the dev workbench.
+- Standard-code note: the fleet-unified ledger implementation is the
+  ledger-rs crate (Rust; fleet pins tag **v0.1.1**: v0.1.0 has a
+  URL-concatenation defect, 总台追注 2026-09-20). This repo is C#/.NET,
+  where a Cargo dependency is mechanically inapplicable - the minimal C#
+  signing client stays, pinned to the same five-header contract + kid
+  convention, guarded by the __selftest__ signing-base/kid vectors
+  (portability form referred back to the 总台).
+
 ## 1.0.159 (review-batch fixes)
 
 - NOTE: the close-chain status flip is server-blocked today (the ledger's
-  status-event validator rejects every `to` shape — probe evidence attached
+  status-event validator rejects every `to` shape, probe evidence attached
   to the review; reported for the service side). `issue close` still records
   its idempotent result event; finishing an issue to `done` currently goes
   through the omc admin face. Strict mode adds no stderr line for batch

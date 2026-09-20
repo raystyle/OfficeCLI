@@ -5,8 +5,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>OfficeCli</RootNamespace>
     <AssemblyName>officecli</AssemblyName>
-    <Version>1.0.159</Version>
-    <InformationalVersion>1.0.159+raystyle-fork</InformationalVersion>
+    <Version>1.0.160</Version>
+    <InformationalVersion>1.0.160+raystyle-fork</InformationalVersion>
     <!-- Lineage marker: this build is from the raystyle fork (self-maintained
          distribution), not upstream iOfficeAI. Numeric Version continues the
          upstream series so IsNewer/probe stay monotonic; the informational

@@ -120,7 +120,7 @@ internal static class LlmsManual
         lines.Add("```");
         lines.Add("");
         lines.Add("Hit a defect? `officecli issue new \"<title>\" --kind bug --acceptance \"<criteria>\"`");
-        lines.Add("(repo ledger ledger.ohmygh.com; close cites a registered artifact digest).");
+        lines.Add("(repo ledger ledger.ohmygh.com; additive-only — closures run through omc).");
 
         if (lines.Count > MaxLines)
         {

@@ -44,7 +44,6 @@ internal static class LedgerCli
                     case "new": return IssueNew(rest);
                     case "list": return IssueList(rest);
                     case "show": return IssueShow(rest);
-                    case "close": return IssueClose(rest);
                 }
             }
             else
@@ -53,8 +52,7 @@ internal static class LedgerCli
                 {
                     case "": case "help": UsageArtifact(); return 0;
                     case "publish": return ArtifactPublish(rest);
-                    case "attest": return ArtifactAttest(rest, null);
-                    case "promote": return ArtifactAttest(rest, "promote");
+                    case "attest": return ArtifactAttest(rest);
                     case "list": return ArtifactList(rest);
                 }
             }
@@ -100,7 +98,7 @@ internal static class LedgerCli
         if (!LedgerClient.IssueKinds.Contains(kind))
             throw new InvalidOperationException($"unknown issue kind '{kind}'. Valid: bug, improvement.");
         if (string.IsNullOrWhiteSpace(acceptance))
-            throw new InvalidOperationException("issue new needs --acceptance \"<criteria>\" (the completion judgment pairs with a result digest at close time).");
+            throw new InvalidOperationException("issue new needs --acceptance \"<criteria>\" (closures run through the omc workbench, not this CLI).");
 
         var body = new JsonObject { ["title"] = title, ["kind"] = kind, ["acceptance"] = acceptance };
         var (status, resp) = LedgerClient.PostAsync(Path("issues"), body).GetAwaiter().GetResult();
@@ -192,44 +190,6 @@ internal static class LedgerCli
         return 0;
     }
 
-    private static int IssueClose(string[] a)
-    {
-        string? digest = null, note = null;
-        var pos = ParseArgs(a, ("--digest", v => digest = v), ("--note", v => note = v), ("--json", null));
-        var n = pos.FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(n) || !int.TryParse(n, out _))
-            throw new InvalidOperationException("issue close needs an issue number: officecli issue close <n> --digest sha256:<64hex>");
-        if (!LedgerClient.IsValidDigest(digest))
-            throw new InvalidOperationException("issue close needs --digest sha256:<64hex> referencing a REGISTERED artifact (publish first; the ledger closes only on verified results).");
-
-        var result = new JsonObject { ["type"] = "result", ["digest"] = digest };
-        if (note != null) result["note"] = note;
-        // G4: the result event uses an idempotency key DERIVED from (issue,
-        // digest) — re-running a half-finished close replays the same event
-        // instead of appending a duplicate to the append-only ledger.
-        var (s1, r1) = LedgerClient.PostAsync(Path($"issues/{n}/events"), result,
-            idempotencyKey: ResultEventKey(n, digest!)).GetAwaiter().GetResult();
-        if (s1 is < 200 or >= 300) return Emit(s1, r1, null, json: a.Contains("--json"));
-
-        var done = new JsonObject { ["type"] = "status", ["to"] = "done" };
-        var (s2, r2) = LedgerClient.PostAsync(Path($"issues/{n}/events"), done).GetAwaiter().GetResult();
-        if (s2 is < 200 or >= 300)
-        {
-            Console.Error.WriteLine($"half-state: the result event for issue #{n} IS recorded (digest {digest}), but the status=done event failed — re-run the same close command to finish.");
-            return Emit(s2, r2, null, json: a.Contains("--json"));
-        }
-        return Emit(s2, r2, $"Issue #{n}: result recorded, status done.", json: a.Contains("--json"));
-    }
-
-    /// <summary>Stable idempotency key for the close-chain result event (G4):
-    /// same issue + same digest replays the same event on retry.</summary>
-    private static string ResultEventKey(string n, string digest)
-    {
-        var seed = $"result:{LedgerClient.RepoId}:{n}:{digest}";
-        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
-            System.Text.Encoding.UTF8.GetBytes(seed)))[..32].ToLowerInvariant();
-    }
-
     // ==================== artifact ====================
 
     private static int ArtifactPublish(string[] a)
@@ -271,14 +231,17 @@ internal static class LedgerCli
         return Emit(status, resp, "Artifact registered in the shared library.", json: a.Contains("--json"));
     }
 
-    private static int ArtifactAttest(string[] a, string? fixedType)
+    private static int ArtifactAttest(string[] a)
     {
-        string? type = fixedType, note = null;
+        string? type = null, note = null;
         var pos = ParseArgs(a, ("--type", v => type = v), ("--note", v => note = v), ("--json", null));
         var id = pos.FirstOrDefault();
         if (string.IsNullOrWhiteSpace(id))
-            throw new InvalidOperationException($"artifact {(fixedType ?? "attest")} needs an artifact id.");
-        if (type == null || !LedgerClient.AttestationTypes.Contains(type))
+            throw new InvalidOperationException("artifact attest needs an artifact id.");
+        if (type == null)
+            throw new InvalidOperationException(
+                "artifact attest needs --type attest_dev|attest_prod|verification_failed.");
+        if (!LedgerClient.AttestationTypes.Contains(type))
             throw new InvalidOperationException($"unknown attestation type '{type}'. Valid: {string.Join(", ", LedgerClient.AttestationTypes.OrderBy(t => t, StringComparer.Ordinal))}.");
 
         var body = new JsonObject { ["type"] = type };
@@ -453,10 +416,8 @@ internal static class LedgerCli
         Console.WriteLine("      Family pagination: pages of <=100, has_more saturation hint");
         Console.WriteLine("  officecli issue show <n> [--json]");
         Console.WriteLine("      One issue with its event history");
-        Console.WriteLine("  officecli issue close <n> --digest sha256:<64hex> [--note <text>]");
-        Console.WriteLine("      Close chain: result event citing a registered digest, then status=done");
-        Console.WriteLine("      (status flip is server-blocked today; the idempotent result event still");
-        Console.WriteLine("       lands — finishing to done goes through the omc admin face)");
+        Console.WriteLine("Closing/status changes are NOT in this CLI (additive-only surface): the");
+        Console.WriteLine("dev workbench delegates them to omc (omc ledger issue status <repo> <n> <to>).");
         Console.WriteLine("Values starting with '-': use --flag=value, --flag -x, or a bare '--' before them.");
         Console.WriteLine();
         Console.WriteLine($"Source of truth: {LedgerClient.ApiBase} (REQ-063 ledger; supersedes issues.ohmygh.com).");
@@ -468,14 +429,14 @@ internal static class LedgerCli
         Console.WriteLine("Usage:");
         Console.WriteLine("  officecli artifact publish --name <n> --kind <kind> --digest sha256:<64hex>");
         Console.WriteLine("      [--version <v>] [--git-range <a..b>] [--deps <id,id,...>] [--outcome success|failure] [--note <text>]");
-        Console.WriteLine("  officecli artifact attest <id> --type attest_dev|attest_prod|verification_failed|demote|supersede [--note <text>]");
-        Console.WriteLine("  officecli artifact promote <id>");
-        Console.WriteLine("      sugar for attest --type promote");
+        Console.WriteLine("  officecli artifact attest <id> --type attest_dev|attest_prod|verification_failed [--note <text>]");
         Console.WriteLine("  officecli artifact list [--current] [--env dev|prod] [--json]");
         Console.WriteLine();
         Console.WriteLine("Kinds: experience (outcome success|failure), lesson, research, prototype, binary,");
         Console.WriteLine("       image, wasm, sbom, schema, openapi, eval-set, benchmark, runbook, decision, attested-report");
         Console.WriteLine("Digest = sha256 of the content/record (metadata registry; bytes stay out).");
+        Console.WriteLine("Promote/demote/supersede are NOT in this CLI (additive-only surface):");
+        Console.WriteLine("they run through the omc workbench (herdr-delegated).");
         Console.WriteLine($"Source of truth: {LedgerClient.ApiBase} (REQ-063).");
     }
 }

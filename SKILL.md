@@ -97,10 +97,8 @@ Hit a defect mid-session - wrong output, crash, schema/doc mismatch - open it on
 officecli issue new "<title>" --kind bug --acceptance "<repro: command, input, expected vs actual>"
 officecli issue list                    # family pagination (limit 100, before cursor)
 officecli issue show <n>                # projection + timeline
-officecli issue close <n> --digest sha256:<64hex>   # result cites a registered digest
-# NOTE: the status=done flip is server-blocked today (ledger status validator
-# rejects all to-shapes; reported). close still records the idempotent result
-# event; finishing to done currently goes through the omc admin face.
+# Closures and status changes are NOT in this CLI (additive-only surface):
+# the dev workbench delegates them to omc (omc ledger issue status <repo> <n> <to>).
 officecli artifact publish --name <n> --kind experience --outcome success --digest sha256:<64hex> ...
 ```
 
