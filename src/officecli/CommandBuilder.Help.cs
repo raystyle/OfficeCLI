@@ -96,6 +96,8 @@ static partial class CommandBuilder
                 "      One issue with its event history",
                 "  officecli issue close <n> --digest sha256:<64hex> [--note <text>]",
                 "      Close chain: result event citing a registered digest, then status=done",
+                "      (status flip is server-blocked today; the idempotent result event still",
+                "       lands — finishing to done goes through the omc admin face)",
                 "",
                 "Source of truth: ledger.ohmygh.com (REQ-063; supersedes issues.ohmygh.com).",
                 "Agents: hit a defect mid-session — open it one-key with an acceptance line.",

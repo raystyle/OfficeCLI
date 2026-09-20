@@ -117,9 +117,11 @@ if (args.Length >= 1 && args[0] == "--schema")
 {
     return OfficeCli.Help.SchemaFace.Run(null);
 }
-if (args.Length > 1 && args[0] != "help" && Array.IndexOf(args, "--schema") > 0
+if (args.Length > 1 && Array.IndexOf(args, "--schema") > 0
     && !TokenIsOptionValue(args, Array.IndexOf(args, "--schema")))
 {
+    // G-e: `help --schema` resolves too (help is a real tree command); the
+    // old exclusion made it die as "unknown format '--schema'".
     return OfficeCli.Help.SchemaFace.Run(args[0]);
 }
 var outputRequest = OfficeCli.Core.OutputRequest.Extract(ref args);

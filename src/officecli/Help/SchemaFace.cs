@@ -28,10 +28,17 @@ internal static class SchemaFace
         Command cmd = root;
         if (commandName != null)
         {
+            // Round-2 F-B: unknown names are a usage error (stderr + rc 2), not
+            // an uncaught throw (was rc 134 + stack).
             cmd = root.Subcommands.FirstOrDefault(c =>
                       string.Equals(c.Name, commandName, StringComparison.OrdinalIgnoreCase) && !c.Hidden)
-                  ?? throw new ArgumentException(
-                      $"unknown command '{commandName}' -- no schema face for it. Root schema: officecli --schema");
+                  ?? root;
+            if (cmd == root && !string.Equals(commandName, root.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                Console.Error.WriteLine(
+                    $"error: unknown command '{commandName}' -- no schema face for it. Root schema: officecli --schema");
+                return 2;
+            }
         }
 
         // Root description begins "officecli: …" — strip the self-naming prefix

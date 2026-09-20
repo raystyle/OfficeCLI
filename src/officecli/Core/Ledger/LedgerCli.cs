@@ -89,9 +89,10 @@ internal static class LedgerCli
     private static int IssueNew(string[] a)
     {
         string? kind = null, acceptance = null;
-        var (pos, _) = ParseArgs(a,
+        var pos = ParseArgs(a,
             ("--kind", v => kind = v), ("--acceptance", v => acceptance = v),
-            ("--body", v => acceptance = acceptance == null ? v : acceptance + "\n" + v));
+            ("--body", v => acceptance = acceptance == null ? v : acceptance + "\n" + v),
+            ("--json", null));
         var title = pos.FirstOrDefault();
         if (string.IsNullOrWhiteSpace(title))
             throw new InvalidOperationException("issue new needs a title: officecli issue new \"<title>\" --kind bug|improvement --acceptance \"<criteria>\"");
@@ -113,7 +114,8 @@ internal static class LedgerCli
         bool json = a.Contains("--json");
         ParseArgs(a,
             ("--limit", v => { if (!int.TryParse(v, out limit) || limit is < 1 or > 100) throw new InvalidOperationException("--limit must be 1..100 (family form caps a page at 100)."); }),
-            ("--before", v => before = v));
+            ("--before", v => before = v),
+            ("--json", null));
         var query = $"?limit={limit}&more=1" + (before != null ? $"&before={Uri.EscapeDataString(before)}" : "");
         var (status, resp) = LedgerClient.GetAsync(Path("issues") + query).GetAwaiter().GetResult();
         if (json || status != 200) return Emit(status, resp, null, json);
@@ -140,7 +142,7 @@ internal static class LedgerCli
 
     private static int IssueShow(string[] a)
     {
-        var (pos, _) = ParseArgs(a, ("--json", null));
+        var pos = ParseArgs(a, ("--json", null));
         var n = pos.FirstOrDefault();
         if (string.IsNullOrWhiteSpace(n) || !int.TryParse(n, out _))
             throw new InvalidOperationException("issue show needs an issue number: officecli issue show <n>");
@@ -193,7 +195,7 @@ internal static class LedgerCli
     private static int IssueClose(string[] a)
     {
         string? digest = null, note = null;
-        var (pos, _) = ParseArgs(a, ("--digest", v => digest = v), ("--note", v => note = v), ("--json", null));
+        var pos = ParseArgs(a, ("--digest", v => digest = v), ("--note", v => note = v), ("--json", null));
         var n = pos.FirstOrDefault();
         if (string.IsNullOrWhiteSpace(n) || !int.TryParse(n, out _))
             throw new InvalidOperationException("issue close needs an issue number: officecli issue close <n> --digest sha256:<64hex>");
@@ -234,7 +236,7 @@ internal static class LedgerCli
     {
         string? name = null, kind = null, digest = null, version = null, range = null, outcome = null, note = null;
         List<string>? deps = null;
-        var (_, _) = ParseArgs(a,
+        ParseArgs(a,
             ("--name", v => name = v),
             ("--kind", v => kind = v),
             ("--digest", v => digest = v),
@@ -272,7 +274,7 @@ internal static class LedgerCli
     private static int ArtifactAttest(string[] a, string? fixedType)
     {
         string? type = fixedType, note = null;
-        var (pos, _) = ParseArgs(a, ("--type", v => type = v), ("--note", v => note = v), ("--json", null));
+        var pos = ParseArgs(a, ("--type", v => type = v), ("--note", v => note = v), ("--json", null));
         var id = pos.FirstOrDefault();
         if (string.IsNullOrWhiteSpace(id))
             throw new InvalidOperationException($"artifact {(fixedType ?? "attest")} needs an artifact id.");
@@ -316,18 +318,37 @@ internal static class LedgerCli
 
     /// <summary>Emit by status: 2xx prints the server projection (or the
     /// success line); anything else is an error on stderr with the server's
-    /// body verbatim (schema hints survive). JSON mode (F6) wraps the server
-    /// body in the standard CLI envelope and suppresses the human line — the
-    /// machine face must be parseable JSON.</summary>
+    /// body verbatim (schema hints survive). JSON mode (F6 + round-2 F-D/G-b):
+    /// the server body must PARSE as JSON before it can claim ok — parsed
+    /// nodes go into the envelope's data (so .data.count and
+    /// --filter-output work); a 2xx with a non-JSON body is a system error on
+    /// BOTH faces (stderr + rc 2), never an ok:true string-wrap.</summary>
     private static int Emit(int status, string resp, string? humanLine, bool json = false)
     {
         if (status is >= 200 and < 300)
         {
             if (json)
             {
-                Console.WriteLine(OutputFormatter.WrapEnvelopeText(
-                    string.IsNullOrWhiteSpace(resp) ? (humanLine ?? "ok") : resp.Trim()));
-                return 0;
+                var body = resp.Trim();
+                if (body.Length == 0)
+                {
+                    Console.WriteLine(OutputFormatter.WrapEnvelopeText(humanLine ?? "ok"));
+                    return 0;
+                }
+                try
+                {
+                    // Validate BEFORE wrapping: WrapEnvelope itself tolerates
+                    // non-JSON (embeds it as a string), which is exactly the
+                    // false-ok this path must not produce.
+                    _ = JsonNode.Parse(body) ?? (object)"null";
+                    Console.WriteLine(OutputFormatter.WrapEnvelope(body));
+                    return 0;
+                }
+                catch (JsonException)
+                {
+                    Console.Error.WriteLine($"ledger response not valid JSON: '{body[..Math.Min(60, body.Length)]}...'");
+                    return 2; // system error — mirror the human face's verdict
+                }
             }
             if (humanLine != null) Console.WriteLine(humanLine);
             if (!string.IsNullOrWhiteSpace(resp))
@@ -336,36 +357,56 @@ internal static class LedgerCli
         }
         Console.Error.WriteLine($"ledger {status}: {resp.Trim()}");
         if (json && !string.IsNullOrWhiteSpace(resp))
-            Console.WriteLine(OutputFormatter.WrapEnvelopeText(resp.Trim(), success: false));
+        {
+            try { JsonNode.Parse(resp.Trim()); Console.WriteLine(OutputFormatter.WrapEnvelopeText(resp.Trim(), success: false)); }
+            catch (JsonException) { /* stderr already carries the verbatim body */ }
+        }
         if (status == 401) Console.Error.WriteLine("(signature/key: check the local Ed25519 key and that the CLI's embedded public key is registered for this repo on ledger.ohmygh.com)");
         if (status == 429) Console.Error.WriteLine("(per-key quota is 50 writes / UTC day; idempotent replays do not consume it)");
         return 1;
     }
 
-    /// <summary>Single-pass args parser (F4): flag tokens consume their value
-    /// token, everything else is positional — flag VALUES can never be
-    /// mistaken for positionals. A null setter marks a boolean flag (no
-    /// value); unknown dash-tokens fall through as positionals and surface
-    /// later as unknown-subcommand/parameter errors.</summary>
-    private static (List<string> Positionals, int Consumed) ParseArgs(
+    /// <summary>Single-pass args parser (F4 + round-2 F-A): flag tokens consume
+    /// their value token (or an inline --flag=value); anything else is
+    /// positional. A null setter marks a boolean flag. Dash tokens that match
+    /// NO registered flag are USAGE ERRORS, not positionals — before the F4
+    /// fix they stole the positional slot; after it they landed in it.</summary>
+    private static List<string> ParseArgs(
         string[] a, params (string Name, Action<string>? Set)[] flags)
     {
         var positionals = new List<string>();
         for (int i = 0; i < a.Length; i++)
         {
+            var token = a[i];
+            // inline --flag=value form
+            string? inline = null;
+            if (token.StartsWith("--", StringComparison.Ordinal))
+            {
+                var eq = token.IndexOf('=');
+                if (eq > 2) { inline = token[(eq + 1)..]; token = token[..eq]; }
+            }
             var matched = false;
             foreach (var (name, set) in flags)
             {
-                if (!string.Equals(a[i], name, StringComparison.Ordinal)) continue;
+                if (!string.Equals(token, name, StringComparison.Ordinal)) continue;
                 matched = true;
-                if (set == null) break; // boolean flag — no value token
+                if (set == null)
+                {
+                    if (inline != null)
+                        throw new InvalidOperationException($"{name} is a boolean flag; use bare {name}.");
+                    break;
+                }
+                if (inline != null) { set(inline); break; }
                 if (i + 1 >= a.Length) throw new InvalidOperationException($"{name} needs a value.");
                 set(a[++i]);
                 break;
             }
-            if (!matched) positionals.Add(a[i]);
+            if (matched) continue;
+            if (token.StartsWith('-') && token.Length > 1)
+                throw new InvalidOperationException($"unknown option '{a[i]}'.");
+            positionals.Add(a[i]);
         }
-        return (positionals, a.Length);
+        return positionals;
     }
 
     private static List<JsonObject> Items(JsonNode? root, string arrayKey)

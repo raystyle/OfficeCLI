@@ -237,19 +237,47 @@ internal sealed class OutputRequest
             if (envelope["error"] is JsonObject err)
             {
                 var message = err["error"]?.ToString() ?? "";
-                var code = err["code"]?.ToString() ?? "";
+                var code = err["code"]?.ToString() ?? "error";
                 var cta = envelope["meta"]?["cta"] as JsonObject;
                 envelope["error"] = message;
+                ReorderStrictEnvelope(envelope);
                 WriteStderrErrorLine(code, message, cta);
                 return;
             }
 
-            var failed = envelope["ok"] is JsonValue okv && okv.GetValue<bool>() == false;
+            // G-d: TryGetValue — a foreign non-bool ok must not throw here.
+            var failed = envelope["ok"] is JsonValue okv
+                         && (okv.TryGetValue<bool>(out var b) ? !b : true);
             if (failed && !string.IsNullOrWhiteSpace(messageOnly))
             {
+                // G-d: non-empty fallback code — lift the first warning's code
+                // when present (message-only envelopes carry warning codes).
+                var code = "error";
+                if (envelope["warnings"] is JsonArray warnings
+                    && warnings.Count > 0 && warnings[0]?["code"] is { } wc)
+                    code = wc.ToString();
                 envelope["error"] = messageOnly;
-                WriteStderrErrorLine("", messageOnly, null);
+                ReorderStrictEnvelope(envelope);
+                WriteStderrErrorLine(code, messageOnly, null);
             }
+        }
+
+        /// <summary>G-d: strict field order = ok, error, data, warnings,
+        /// matched, meta (error directly after the verdict, per the
+        /// stable-field-order contract; data survives — batch partial
+        /// failures carry both). JsonNode cannot reorder in place, so the
+        /// known keys are re-assigned in order.</summary>
+        private static void ReorderStrictEnvelope(JsonObject envelope)
+        {
+            var ordered = new JsonObject { ["ok"] = envelope["ok"]?.DeepClone() };
+            if (envelope["error"] is { } e) ordered["error"] = e.DeepClone();
+            if (envelope["data"] is { } d) ordered["data"] = d.DeepClone();
+            if (envelope["warnings"] is { } w) ordered["warnings"] = w.DeepClone();
+            if (envelope["matched"] is { } m) ordered["matched"] = m.DeepClone();
+            if (envelope["meta"] is { } meta) ordered["meta"] = meta.DeepClone();
+            envelope.Clear();
+            foreach (var (key, value) in ordered)
+                envelope[key] = value?.DeepClone();
         }
 
         private static void WriteStderrErrorLine(string code, string message, JsonObject? cta)
@@ -339,17 +367,16 @@ internal sealed class OutputRequest
                 case JsonObject obj:
                     if (!root && !listItem) sb.AppendLine();
                     // A list-item object puts its first key on the dash line
-                    // ("pad- "), continuation keys at indent+2. F3: a NESTED
-                    // container under a key must be strictly deeper than its
-                    // key's column — dash-line keys sit at indent+2 (children
-                    // at indent+2), continuation keys at indent+2 (children at
-                    // indent+4); using indent+2 for both produced siblings at
-                    // the key's own column and flattened the tree.
+                    // ("pad- "), continuation keys at indent+2. F3 + round-2
+                    // G-e: EVERY key of a list item sits at indent+2, so every
+                    // nested container goes to indent+4 — uniform key+2
+                    // nesting (the compact indent+2-first-key form parsed but
+                    // diverged from the continuation-key shape).
                     var first = listItem;
                     var contPad = listItem ? new string(' ', indent + 2) : pad;
+                    var valueIndent = listItem ? indent + 4 : indent + 2;
                     foreach (var (key, value) in obj)
                     {
-                        var valueIndent = first ? indent + 2 : indent + 4;
                         if (first) { sb.Append(pad).Append("- "); first = false; }
                         else sb.Append(contPad);
                         sb.Append(YamlKey(key)).Append(':');
@@ -416,13 +443,16 @@ internal sealed class OutputRequest
 
         private static string YamlString(string s)
         {
-            if (s.Length == 0 || s.IndexOfAny("\n\r\t:#{}[],&*?|<>=!%@`\"'".ToCharArray()) >= 0 || char.IsWhiteSpace(s[0]))
+            if (s.Length == 0 || s.IndexOfAny("\n\r\t:#{}[],&*?|<>=!%@`\"'".ToCharArray()) >= 0
+                || char.IsWhiteSpace(s[0]) || char.IsWhiteSpace(s[^1]))
                 return QuoteJson(s);
-            // F3: quote strings a YAML loader would coerce to non-strings —
-            // numbers (incl. leading-zero octal-looking ids like "00100000"),
-            // floats, bools and nulls (YAML 1.1 widens yes/no/on/off too).
-            if (System.Text.RegularExpressions.Regex.IsMatch(s,
-                    @"^(?:[-+]?(\d[\d_]*|0[xXoObB][0-9a-fA-F_]+)|[-+]?(\d*\.\d+|\d+\.\d*)([eE][-+]?\d+)?|[-+]?\d+[eE][-+]?\d+)$")
+            // F3 + round-2 F-C: quote strings a YAML loader would coerce to
+            // non-strings — numbers (incl. leading-zero octal-looking ids),
+            // floats, .inf/.nan, YAML 1.1 bools/nulls and 1.1 timestamps
+            // (dates are everywhere in office text).
+            if (LooksNumericYaml(s)
+                || System.Text.RegularExpressions.Regex.IsMatch(s, @"^[-+]?\.(?:inf|Inf|INF|nan|NaN|NAN)$")
+                || System.Text.RegularExpressions.Regex.IsMatch(s, @"^\d{4}-\d{1,2}-\d{1,2}(?:[Tt ].*)?$")
                 || s.Equals("true", StringComparison.OrdinalIgnoreCase)
                 || s.Equals("false", StringComparison.OrdinalIgnoreCase)
                 || s.Equals("yes", StringComparison.OrdinalIgnoreCase)
@@ -434,6 +464,11 @@ internal sealed class OutputRequest
                 return QuoteJson(s);
             return s;
         }
+
+        private static bool LooksNumericYaml(string s) =>
+            System.Text.RegularExpressions.Regex.IsMatch(s, @"^[-+]?(?:\d[\d_]*|0[xXoObB][0-9a-fA-F_]+)$")
+            || System.Text.RegularExpressions.Regex.IsMatch(s, @"^[-+]?(?:\d*\.\d+|\d+\.\d*)(?:[eE][-+]?\d+)?$")
+            || System.Text.RegularExpressions.Regex.IsMatch(s, @"^[-+]?\d+[eE][-+]?\d+$");
 
         /// <summary>JSON string quoting without the serializer (this publish is
         /// trimmed: reflection-based JsonSerializer.Serialize(string) throws).</summary>

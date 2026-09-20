@@ -139,9 +139,10 @@ internal static class HelpFace
         ("OFFICECLI_WATCH_ALLOWED_HOSTS", "origin hosts allowed by the watch preview server", "localhost"),
         ("OFFICECLI_SKIP_UPDATE", "set 1 to skip the non-blocking update check", "unset"),
         ("OFFICECLI_BATCH_ALLOW_STDIN_REDIRECT", "allow batch to read commands from redirected stdin (off by default: guards scripted misuse)", "unset"),
-        ("OFFICECLI_ISSUES_API", "issue command API base override (tests/canary)", "https://issues.ohmygh.com"),
         ("OFFICECLI_LOCAL_BINARY", "installer uses this local binary (offline installs)", "unset"),
         ("OFFICECLI_MMDC", "mermaid CLI (mmdc) path override", "mmdc on PATH"),
+        // OFFICECLI_ISSUES_API retired with the ledger switch (REQ-063); the
+        // canary override lives in OFFICECLI_LEDGER_API now.
     };
 
     // ==================== root (group) face ====================
