@@ -38,13 +38,12 @@ internal static class LedgerClient
     internal static readonly HashSet<string> IssueKinds =
         new(StringComparer.OrdinalIgnoreCase) { "bug", "improvement" };
 
+    // 总台数据治理轮 2026-09-22: the server hard-validates the three-type
+    // standard — experience / lesson / research (research carries the git
+    // landing path in git_range). The retired 15-kind list is gone
+    // server-side; the CLI face stays in lockstep.
     internal static readonly HashSet<string> ArtifactKinds =
-        new(StringComparer.OrdinalIgnoreCase)
-        {
-            "experience", "lesson", "research", "prototype", "binary", "image", "wasm",
-            "sbom", "schema", "openapi", "eval-set", "benchmark", "runbook", "decision",
-            "attested-report",
-        };
+        new(StringComparer.OrdinalIgnoreCase) { "experience", "lesson", "research" };
 
     // EventTypes (claim/release/status/result/blocker) retired with the
     // additive-only surface: no CLI face posts events any more.

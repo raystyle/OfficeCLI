@@ -13,7 +13,8 @@ namespace OfficeCli.Core;
 /// command family (ledger.ohmygh.com, the new source of truth; the old
 /// issues.ohmygh.com face is retired from this CLI). Issues track obligation
 /// (bug / improvement with acceptance); artifacts are the shared library
-/// (experience / lesson / research / … registered by content digest). Writes
+/// (three-type standard: experience / lesson / research, registered by
+/// content digest with a REQUIRED summary + outcome). Writes
 /// are Ed25519-signed by <see cref="LedgerClient"/>; reads follow the family
 /// pagination form (limit 100 + before cursor + has_more saturation hint).
 /// </summary>
@@ -194,12 +195,13 @@ internal static class LedgerCli
 
     private static int ArtifactPublish(string[] a)
     {
-        string? name = null, kind = null, digest = null, version = null, range = null, outcome = null, note = null;
+        string? name = null, kind = null, digest = null, version = null, range = null, outcome = null, note = null, summary = null;
         List<string>? deps = null;
         ParseArgs(a,
             ("--name", v => name = v),
             ("--kind", v => kind = v),
             ("--digest", v => digest = v),
+            ("--summary", v => summary = v),
             ("--version", v => version = v),
             ("--git-range", v => range = v),
             ("--git_range", v => range = v),
@@ -212,11 +214,19 @@ internal static class LedgerCli
                 "artifact publish needs --name, --kind, --digest sha256:<64hex> (hash of the content/record — the ledger stores metadata, not bytes).");
         if (!LedgerClient.ArtifactKinds.Contains(kind))
             throw new InvalidOperationException($"unknown artifact kind '{kind}'. Valid: {string.Join(", ", LedgerClient.ArtifactKinds.OrderBy(k => k, StringComparer.Ordinal))}.");
-        if (kind!.Equals("experience", StringComparison.OrdinalIgnoreCase)
-            && outcome is not null and not ("success" or "failure"))
-            throw new InvalidOperationException("--outcome for kind=experience must be success or failure.");
+        // 总台数据治理轮 2026-09-22 (server hard validation): summary is the
+        // record's text body and is REQUIRED — empty publishes are a 400
+        // server-side; reject locally first so a junk payload never leaves
+        // the machine. outcome is likewise required, success|failure only,
+        // for EVERY kind.
+        if (string.IsNullOrWhiteSpace(summary))
+            throw new InvalidOperationException(
+                "artifact publish needs --summary \"<experience description>\" — the record's text body (empty publishes are rejected locally; the server 400s them).");
+        if (outcome is not ("success" or "failure"))
+            throw new InvalidOperationException(
+                "artifact publish needs --outcome success|failure (as-truthful result of the record; required for every kind).");
 
-        var body = new JsonObject { ["name"] = name, ["kind"] = kind, ["digest"] = digest };
+        var body = new JsonObject { ["name"] = name, ["kind"] = kind, ["digest"] = digest, ["summary"] = summary };
         if (version != null) body["version"] = version;
         if (range != null) body["git_range"] = range;
         if (outcome != null) body["outcome"] = outcome;
@@ -427,13 +437,16 @@ internal static class LedgerCli
     private static void UsageArtifact()
     {
         Console.WriteLine("Usage:");
-        Console.WriteLine("  officecli artifact publish --name <n> --kind <kind> --digest sha256:<64hex>");
-        Console.WriteLine("      [--version <v>] [--git-range <a..b>] [--deps <id,id,...>] [--outcome success|failure] [--note <text>]");
+        Console.WriteLine("  officecli artifact publish --name <n> --kind experience|lesson|research --digest sha256:<64hex>");
+        Console.WriteLine("      --summary \"<experience description>\" --outcome success|failure");
+        Console.WriteLine("      [--version <v>] [--git-range <a..b>] [--deps <id,id,...>] [--note <text>]");
         Console.WriteLine("  officecli artifact attest <id> --type attest_dev|attest_prod|verification_failed [--note <text>]");
         Console.WriteLine("  officecli artifact list [--current] [--env dev|prod] [--json]");
         Console.WriteLine();
-        Console.WriteLine("Kinds: experience (outcome success|failure), lesson, research, prototype, binary,");
-        Console.WriteLine("       image, wasm, sbom, schema, openapi, eval-set, benchmark, runbook, decision, attested-report");
+        Console.WriteLine("Kinds (three-type standard, 总台 2026-09-22): experience, lesson, research —");
+        Console.WriteLine("       research carries the git landing path via --git-range.");
+        Console.WriteLine("Summary (the text body) + outcome (success|failure) are required; empty");
+        Console.WriteLine("       publishes are rejected locally first and 400 server-side.");
         Console.WriteLine("Digest = sha256 of the content/record (metadata registry; bytes stay out).");
         Console.WriteLine("Promote/demote/supersede are NOT in this CLI (additive-only surface):");
         Console.WriteLine("they run through the omc workbench (herdr-delegated).");

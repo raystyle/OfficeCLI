@@ -586,11 +586,14 @@ internal static class UpdateChecker
         if (!OfficeCli.Core.Ledger.LedgerClient.IssueKinds.Contains("bug")
             || OfficeCli.Core.Ledger.LedgerClient.IssueKinds.Contains("task"))
             throw new InvalidOperationException("issue kind set wrong");
-        foreach (var k in new[] { "experience", "lesson", "research", "attested-report" })
+        foreach (var k in new[] { "experience", "lesson", "research" })
             if (!OfficeCli.Core.Ledger.LedgerClient.ArtifactKinds.Contains(k))
                 throw new InvalidOperationException($"artifact kind missing: {k}");
-        if (OfficeCli.Core.Ledger.LedgerClient.ArtifactKinds.Contains("blob"))
-            throw new InvalidOperationException("unknown artifact kind accepted");
+        // Three-type standard (总台 2026-09-22): the retired 15-kind entries
+        // must be GONE — a narrowed set that still accepts them is drift.
+        foreach (var retired in new[] { "attested-report", "prototype", "runbook", "blob" })
+            if (OfficeCli.Core.Ledger.LedgerClient.ArtifactKinds.Contains(retired))
+                throw new InvalidOperationException($"retired artifact kind still accepted: {retired}");
 
         // 4. Embedded identity: kid must be sha256 of the canonical alphabetical
         //    JWK (guards a copy-paste drift between PublicKeyJwk and KeyId).

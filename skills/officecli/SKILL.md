@@ -99,7 +99,7 @@ officecli issue list                    # family pagination (limit 100, before c
 officecli issue show <n>                # projection + timeline
 # Closures and status changes are NOT in this CLI (additive-only surface):
 # the dev workbench delegates them to omc (omc ledger issue status <repo> <n> <to>).
-officecli artifact publish --name <n> --kind experience --outcome success --digest sha256:<64hex> ...
+officecli artifact publish --name <n> --kind experience|lesson|research --summary "<text body>" --outcome success|failure --digest sha256:<64hex> ...
 ```
 
 ---

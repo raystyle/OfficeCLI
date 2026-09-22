@@ -4,6 +4,22 @@
  [GitHub Releases](https://github.com/raystyle/OfficeCLI/releases) (auto-generated
  notes per tag).
 
+## 1.0.161 (artifact publish 硬校验预检, 总台数据治理轮 2026-09-22)
+
+- `artifact publish` now pre-checks the server's hard validation standard
+  locally (总台 2026-09-22): kind is narrowed to the three-type standard
+  experience | lesson | research (the retired 12 kinds are rejected before
+  the network), `--summary` (the record's text body) is REQUIRED: empty
+  publishes fail fast with rc 2 instead of a server 400. `--outcome`
+  is required for every kind, success | failure only.
+- `__selftest__` kind vectors updated: the three standard kinds must be
+  present AND retired kinds (attested-report, prototype, runbook, ...)
+  must be absent. Help faces (`help artifact`, usage, CommandBuilder tree,
+  SKILL.md) updated to the same synopsis.
+- Governance note: the four artifacts deleted in this round (empty-summary
+  publishes under the old note-only face) are republished byte-identically
+  with summary + outcome per the new standard; digests self-verify.
+
 ## 1.0.160 (权限收口, 总台修正令 2026-09-20)
 
 - CLI ledger surface is ADDITIVE-ONLY now: `issue close` (result + status
